@@ -1,0 +1,27 @@
+# Environment variables & local credentials
+.env.local
+.env
+.env.*.local
+
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local Persistent Database store (runtime data)
+backend/data/local-db.json
+
+# Test outputs and temporary scratches
+scratch/
+.system_generated/
+*.tmp
+
+# OS & IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
