@@ -462,8 +462,24 @@ body[data-view-mode="dev"] .topbar-inner.site-container {
   color: #FFFFFF;
 }
 
-/* Mode Visibility & Open Side Margins in User Mode */
-body[data-view-mode="user"] .dev-only-el {
+/* Mode Visibility & Open Side Margins in User & Production Mode */
+body[data-view-mode="user"] .dev-only-el,
+body[data-view-mode="production"] .dev-only-el {
+  display: none !important;
+}
+
+/* Production Mode Strict Consumer Cleanups: Zero Dev Artifacts */
+body[data-view-mode="production"] .mode-switch-pill,
+body[data-view-mode="production"] .dev-only-el,
+body[data-view-mode="production"] #devSidebar,
+body[data-view-mode="production"] #devPortalSwitcher,
+body[data-view-mode="production"] #supabaseStatusBtn,
+body[data-view-mode="production"] .dev-catalog-btn,
+body[data-view-mode="production"] #userRoleSelect,
+body[data-view-mode="production"] .screen-finding,
+body[data-view-mode="production"] .screen-finding-box,
+body[data-view-mode="production"] .sidebar-footer-box,
+body[data-view-mode="production"] .badge-prod {
   display: none !important;
 }
 
@@ -472,19 +488,22 @@ body[data-view-mode="dev"] .user-main-nav {
   display: none !important;
 }
 
-body[data-view-mode="user"] .framed-shell {
+body[data-view-mode="user"] .framed-shell,
+body[data-view-mode="production"] .framed-shell {
   grid-template-columns: minmax(0, 1fr);
 }
 
-body[data-view-mode="user"] .shell-sheet {
+body[data-view-mode="user"] .shell-sheet,
+body[data-view-mode="production"] .shell-sheet {
   grid-column: 1 / -1;
   margin: 0;
   border-radius: 0;
   background-color: var(--color-bg);
 }
 
-/* Non-homepage screens in User Mode get centered 1200px container with open side margins */
-body[data-view-mode="user"] .shell-sheet:not([data-surface-mode="stationery"]) {
+/* Non-homepage screens in User & Production Mode get centered 1200px container with open side margins */
+body[data-view-mode="user"] .shell-sheet:not([data-surface-mode="stationery"]),
+body[data-view-mode="production"] .shell-sheet:not([data-surface-mode="stationery"]) {
   width: 100%;
   max-width: var(--container-max);
   margin-inline: auto;
@@ -492,7 +511,8 @@ body[data-view-mode="user"] .shell-sheet:not([data-surface-mode="stationery"]) {
 }
 
 /* Homepage (1.1) spans full width so alternating sections (#F8F9FA / #F1F3F5) bleed cleanly while .site-container centers at 1200px */
-body[data-view-mode="user"] .shell-sheet[data-surface-mode="stationery"] {
+body[data-view-mode="user"] .shell-sheet[data-surface-mode="stationery"],
+body[data-view-mode="production"] .shell-sheet[data-surface-mode="stationery"] {
   padding: 0;
   background-color: var(--color-bg);
   color: var(--color-secondary);
@@ -2650,7 +2670,8 @@ table.schedule-table thead th {
 
 @media (max-width: 640px) {
   .site-container,
-  body[data-view-mode="user"] .shell-sheet:not([data-surface-mode="stationery"]) {
+  body[data-view-mode="user"] .shell-sheet:not([data-surface-mode="stationery"]),
+  body[data-view-mode="production"] .shell-sheet:not([data-surface-mode="stationery"]) {
     padding-inline: 16px;
   }
   .hero-section {
@@ -2701,4 +2722,76 @@ table.schedule-table thead th {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* =====================================================================
+ * PRODUCTION MODE & COLD START STYLES
+ * ===================================================================== */
+.badge-prod {
+  background-color: #1B4332;
+  color: #D8F3DC;
+  font-weight: 600;
+  border: 1px solid #2D6A4F;
+  letter-spacing: 0.03em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.badge-prod::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #52B788;
+}
+
+.user-guest-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-logged-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.875rem;
+}
+
+.user-logged-name {
+  font-weight: 600;
+  color: var(--color-text, #111827);
+}
+
+.btn-logout-link {
+  background: none;
+  border: none;
+  color: #DC2626;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.btn-logout-link:hover {
+  background-color: #FEE2E2;
+}
+
+.empty-state-card {
+  background-color: var(--color-surface, #fff);
+  border: 1px dashed var(--color-border, #d1d5db);
+  border-radius: var(--radius-card, 12px);
+  padding: 32px 24px;
+  text-align: center;
 }

@@ -191,4 +191,18 @@ describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
     assert.strictEqual(res.data.ok, true);
     assert.ok(res.data.message.includes('Đã khôi phục dữ liệu'));
   });
+
+  test('Production Mode: /api/status?mode=production activates zero-mock production state', async () => {
+    const res = await makeRequest('GET', '/api/status?mode=production');
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.isProduction, true);
+    assert.strictEqual(res.data.mode, 'production');
+  });
+
+  test('Production Mode: POST /api/supabase/reset-local?mode=production is blocked with 403 Forbidden', async () => {
+    const res = await makeRequest('POST', '/api/supabase/reset-local?mode=production');
+    assert.strictEqual(res.statusCode, 403);
+    assert.strictEqual(res.data.ok, false);
+    assert.ok(res.data.error.includes('Production Mode'));
+  });
 });

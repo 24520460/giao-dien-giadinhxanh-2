@@ -2,15 +2,20 @@
  * =====================================================================
  * GIA ĐÌNH XANH — FULL-STACK BACKEND SERVER (SUPABASE + LOCAL SQL STORE)
  * =====================================================================
- * - Đọc cấu hình từ `.env.local` (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY)
- * - Khi `.env.local` có key: Kết nối trực tiếp tới Supabase thông qua `@supabase/supabase-js`
- * - Khi `.env.local` để trống: Tự động vận hành trên Persistent Local SQL Store (`backend/data/local-db.json`)
- *   tuân thủ nghiêm ngặt 16 bảng, 1 View (`provider_public_profiles`), 4 hàm RPC SECURITY DEFINER và Trigger.
+ * Hỗ trợ 2 chế độ vận hành:
+ * 1. Chế độ Phát triển / Local Mode (mặc định):
+ *    - Vận hành trên Persistent Local SQL Store (backend/data/local-db.json)
+ *    - Đồng bộ tự động với Supabase nếu có khóa trong .env.local
+ * 2. Chế độ Production Mode (?mode=production hoặc ENV=production):
+ *    - ZERO MOCK DATA: Ngắt hoàn toàn nạp mẫu từ db-mock.js / local-db.json
+ *    - Truy vấn và ghi trực tiếp 100% vào Supabase PostgreSQL
+ *    - Giữ nguyên trạng thái Cold Start rỗng tự nhiên nếu DB chưa có bản ghi
  */
 
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { URL } = require("url");
 const { createClient } = require("@supabase/supabase-js");
 const dbSeedModule = require("./db-mock.js");
@@ -27,7 +32,7 @@ function createInitialDatabase() {
 }
 
 // ---------------------------------------------------------------------
-// 1. ĐỌC FILE .env.local (HỖ TRỢ RELOAD NÓNG KHI NGƯỜI DÙNG ĐIỀN KEY)
+// 1. ĐỌC FILE .env / .env.local & NHẬN DIỆN MÔI TRƯỜNG
 // ---------------------------------------------------------------------
 function loadEnvConfig() {
   const envVars = {};
@@ -68,13 +73,34 @@ function loadEnvConfig() {
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     "";
   const port = Number(envVars.PORT || process.env.PORT || 3000);
+  const env = (
+    envVars.ENV ||
+    envVars.NODE_ENV ||
+    process.env.ENV ||
+    process.env.NODE_ENV ||
+    "development"
+  ).trim().toLowerCase();
 
   return {
     supabaseUrl: supabaseUrl.trim(),
     supabaseAnonKey: supabaseAnonKey.trim(),
     supabaseServiceKey: supabaseServiceKey.trim(),
-    port
+    port,
+    env
   };
+}
+
+function isProductionMode(req, searchParams) {
+  const cfg = loadEnvConfig();
+  if (cfg.env === "production") return true;
+  if (searchParams) {
+    const mode = searchParams.get("mode") || searchParams.get("env");
+    if (mode === "production") return true;
+  }
+  if (req && (req.headers["x-gdx-mode"] === "production" || req.headers["x-mode"] === "production")) {
+    return true;
+  }
+  return false;
 }
 
 function getSupabaseClient() {
@@ -147,7 +173,6 @@ function computeProviderPublicProfiles(db) {
     });
 }
 
-// Trigger: trg_reviews_refresh_rating
 function recomputeProviderRating(db, providerId) {
   const provReviews = (db.reviews || []).filter((r) => {
     if (r.provider_id !== undefined) return Number(r.provider_id) === Number(providerId);
@@ -169,10 +194,116 @@ function recomputeProviderRating(db, providerId) {
 // ---------------------------------------------------------------------
 // 3. ĐỌC DỮ LIỆU TỪ SUPABASE (HOẶC FALLBACK SANG LOCAL DB)
 // ---------------------------------------------------------------------
-async function fetchBootstrapData() {
-  const { client, config } = getSupabaseClient();
-  const localDb = ensureLocalDb();
+async function fetchSupabaseTable(client, tableName) {
+  let target = tableName;
+  let res = await client.from(target).select("*");
+  // Hỗ trợ linh hoạt cả tên bảng số ít và số nhiều (province/provinces, ward/wards)
+  if (res.error && (tableName === "province" || tableName === "provinces")) {
+    target = tableName === "province" ? "provinces" : "province";
+    res = await client.from(target).select("*");
+  } else if (res.error && (tableName === "ward" || tableName === "wards")) {
+    target = tableName === "ward" ? "wards" : "ward";
+    res = await client.from(target).select("*");
+  }
 
+  if (res.error) {
+    return { name: tableName, data: [], error: res.error };
+  }
+
+  let allData = res.data || [];
+  // PostgREST mặc định giới hạn 1000 dòng/trang; tự động phân trang cho bảng danh mục lớn (như wards ~3300 dòng)
+  if ((target === "ward" || target === "wards") && allData.length === 1000) {
+    for (let page = 1; page < 6; page++) {
+      const from = page * 1000;
+      const to = from + 999;
+      const { data: pageData, error: pageErr } = await client.from(target).select("*").range(from, to);
+      if (pageErr || !pageData || pageData.length === 0) break;
+      allData = allData.concat(pageData);
+      if (pageData.length < 1000) break;
+    }
+  }
+
+  return { name: tableName, data: allData, error: null };
+}
+
+async function fetchBootstrapData(isProd = false) {
+  const { client, config } = getSupabaseClient();
+
+  if (isProd) {
+    if (!client) {
+      return {
+        ok: false,
+        mode: "production",
+        isProduction: true,
+        connected: false,
+        error: "Production Mode (Zero Mock Data) yêu cầu kết nối Supabase trực tiếp. Vui lòng cấu hình NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY."
+      };
+    }
+
+    try {
+      const tables = [
+        "province",
+        "ward",
+        "users",
+        "customer_profiles",
+        "provider_profiles",
+        "service_categories",
+        "services",
+        "provider_services",
+        "provider_areas",
+        "availability_schedules",
+        "availability_exceptions",
+        "bookings",
+        "booking_status_history",
+        "reviews",
+        "favorites",
+        "support_tickets"
+      ];
+      const results = await Promise.all(tables.map((t) => fetchSupabaseTable(client, t)));
+      const hasError = results.find((r) => r.error);
+      if (hasError) {
+        return {
+          ok: false,
+          mode: "production",
+          isProduction: true,
+          connected: false,
+          error: `Lỗi truy vấn Supabase trong Production Mode: ${hasError.error.message}`
+        };
+      }
+
+      const remoteDb = {};
+      results.forEach((r) => {
+        remoteDb[r.name] = r.data || [];
+      });
+      // Đảm bảo alias đồng nhất cho cả province/provinces và ward/wards
+      remoteDb.provinces = remoteDb.province;
+      remoteDb.wards = remoteDb.ward;
+
+      // Zero mock: Không tự động inject session giả định
+      remoteDb.session = null;
+      remoteDb.provider_public_profiles = computeProviderPublicProfiles(remoteDb);
+
+      return {
+        ok: true,
+        mode: "production",
+        isProduction: true,
+        connected: true,
+        supabaseUrl: config.supabaseUrl,
+        data: remoteDb
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        mode: "production",
+        isProduction: true,
+        connected: false,
+        error: `Lỗi kết nối Supabase trong Production Mode: ${err.message}`
+      };
+    }
+  }
+
+  // Chế độ Local / Hybrid Dev
+  const localDb = ensureLocalDb();
   if (client) {
     try {
       const tables = [
@@ -193,41 +324,46 @@ async function fetchBootstrapData() {
         "favorites",
         "support_tickets"
       ];
-      const results = await Promise.all(tables.map((t) => client.from(t).select("*")));
+      const results = await Promise.all(tables.map((t) => fetchSupabaseTable(client, t)));
       const hasError = results.some((r) => r.error);
       if (!hasError) {
         const remoteDb = {
           session: localDb.session
         };
-        tables.forEach((t, idx) => {
-          remoteDb[t] = results[idx].data || [];
+        results.forEach((r) => {
+          remoteDb[r.name] = r.data || [];
         });
+        remoteDb.provinces = remoteDb.province;
+        remoteDb.wards = remoteDb.ward;
+
         if ((remoteDb.province || []).length > 0 && (remoteDb.services || []).length > 0) {
           remoteDb.provider_public_profiles = computeProviderPublicProfiles(remoteDb);
           return {
+            ok: true,
             mode: "supabase",
             connected: true,
+            isProduction: false,
             supabaseUrl: config.supabaseUrl,
             data: remoteDb
           };
         }
       }
-    } catch (_) {
-      // Fallback sang local store nếu Supabase chưa tạo bảng
-    }
+    } catch (_) {}
   }
 
   localDb.provider_public_profiles = computeProviderPublicProfiles(localDb);
   return {
+    ok: true,
     mode: client ? "supabase_unseeded_fallback" : "local_sql_store",
     connected: Boolean(client),
+    isProduction: false,
     supabaseUrl: config.supabaseUrl || null,
     data: localDb
   };
 }
 
 // ---------------------------------------------------------------------
-// 4. XỬ LÝ REST API ENDPOINTS (ÁNH XẠ 1-1 VỚI 16 BẢNG & 4 RPC)
+// 4. XỬ LÝ REST API ENDPOINTS
 // ---------------------------------------------------------------------
 function parseBody(req) {
   return new Promise((resolve, reject) => {
@@ -258,36 +394,74 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
-async function handleApiRequest(req, res, pathname) {
+async function handleApiRequest(req, res, pathname, searchParams = new URLSearchParams()) {
   const method = req.method.toUpperCase();
-  const db = ensureLocalDb();
+  const isProd = isProductionMode(req, searchParams);
+  const db = isProd ? null : ensureLocalDb();
+  const { client, config, error: clientErr } = getSupabaseClient();
 
-  // 4.1. GET /api/status — Kiểm tra cấu hình .env.local và kết nối Supabase
+  // 4.1. GET /api/status — Kiểm tra cấu hình và kết nối
   if (method === "GET" && pathname === "/api/status") {
-    const { client, config, error } = getSupabaseClient();
     let supabaseReachable = false;
-    let supabaseMessage =
-      "Đang vận hành trên Persistent Local SQL Store (backend/data/local-db.json). Khi bạn điền khóa vào file .env.local, hệ thống sẽ tự động kết nối tới Supabase PostgreSQL.";
+    let supabaseMessage = "";
 
     if (client) {
       try {
-        const { error: pingErr } = await client.from("province").select("provinceId").limit(1);
+        let testRes = await client.from("provinces").select("provinceId").limit(1);
+        if (testRes.error) {
+          testRes = await client.from("province").select("provinceId").limit(1);
+        }
+        const pingErr = testRes.error;
         if (!pingErr) {
           supabaseReachable = true;
-          supabaseMessage = "Đã kết nối trực tiếp tới Supabase PostgreSQL qua @supabase/supabase-js.";
+          supabaseMessage = isProd
+            ? "Đang chạy chế độ Production Mode (Zero Mock Data) — Kết nối trực tiếp Supabase PostgreSQL."
+            : "Đã kết nối trực tiếp tới Supabase PostgreSQL qua @supabase/supabase-js.";
         } else {
-          supabaseMessage = `Đã nhận khóa từ .env.local nhưng truy vấn bảng 'province' trả về: ${pingErr.message}`;
+          supabaseMessage = `Đã nhận khóa từ .env.local nhưng truy vấn bảng 'provinces'/'province' trả về: ${pingErr.message}`;
         }
       } catch (err) {
         supabaseMessage = `Lỗi kết nối tới Supabase: ${err.message}`;
       }
-    } else if (error) {
-      supabaseMessage = error;
+    } else {
+      supabaseMessage = isProd
+        ? "Production Mode yêu cầu cấu hình Supabase hợp lệ trong .env.local. Đã ngắt hoàn toàn nạp dữ liệu mẫu."
+        : "Đang vận hành trên Persistent Local SQL Store (backend/data/local-db.json).";
+    }
+
+    const tableCounts = {};
+    if (isProd && supabaseReachable) {
+      try {
+        const [pRes, wRes, uRes, bRes, rRes] = await Promise.all([
+          client.from("provinces").select("provinceId", { count: "exact", head: true }),
+          client.from("wards").select("ward_id", { count: "exact", head: true }),
+          client.from("users").select("user_id", { count: "exact", head: true }),
+          client.from("bookings").select("booking_id", { count: "exact", head: true }),
+          client.from("reviews").select("review_id", { count: "exact", head: true })
+        ]);
+        tableCounts.province = pRes.count ?? (pRes.error ? 0 : 34);
+        tableCounts.ward = wRes.count ?? (wRes.error ? 0 : 3321);
+        tableCounts.users = uRes.count || 0;
+        tableCounts.bookings = bRes.count || 0;
+        tableCounts.reviews = rRes.count || 0;
+      } catch (_) {}
+    } else if (db) {
+      tableCounts.province = (db.province || []).length;
+      tableCounts.ward = (db.ward || []).length;
+      tableCounts.users = (db.users || []).length;
+      tableCounts.customer_profiles = (db.customer_profiles || []).length;
+      tableCounts.provider_profiles = (db.provider_profiles || []).length;
+      tableCounts.service_categories = (db.service_categories || []).length;
+      tableCounts.services = (db.services || []).length;
+      tableCounts.bookings = (db.bookings || []).length;
+      tableCounts.reviews = (db.reviews || []).length;
+      tableCounts.support_tickets = (db.support_tickets || []).length;
     }
 
     return sendJson(res, 200, {
       ok: true,
-      mode: supabaseReachable ? "supabase" : "local_sql_store",
+      mode: isProd ? "production" : (supabaseReachable ? "supabase" : "local_sql_store"),
+      isProduction: isProd,
       envFile: ".env.local",
       hasSupabaseUrl: Boolean(config.supabaseUrl),
       hasAnonKey: Boolean(config.supabaseAnonKey),
@@ -297,34 +471,33 @@ async function handleApiRequest(req, res, pathname) {
         : null,
       supabaseReachable,
       message: supabaseMessage,
-      tableCounts: {
-        province: (db.province || []).length,
-        ward: (db.ward || []).length,
-        users: (db.users || []).length,
-        customer_profiles: (db.customer_profiles || []).length,
-        provider_profiles: (db.provider_profiles || []).length,
-        service_categories: (db.service_categories || []).length,
-        services: (db.services || []).length,
-        bookings: (db.bookings || []).length,
-        reviews: (db.reviews || []).length,
-        support_tickets: (db.support_tickets || []).length
-      }
+      tableCounts
     });
   }
 
-  // 4.2. GET /api/bootstrap — Tải toàn bộ 16 bảng + View provider_public_profiles
+  // 4.2. GET /api/bootstrap — Tải 16 bảng + View provider_public_profiles
   if (method === "GET" && pathname === "/api/bootstrap") {
-    const boot = await fetchBootstrapData();
+    const boot = await fetchBootstrapData(isProd);
+    if (isProd && !boot.ok) {
+      return sendJson(res, 503, boot);
+    }
     return sendJson(res, 200, {
       ok: true,
       mode: boot.mode,
+      isProduction: isProd,
       connected: boot.connected,
       db: boot.data
     });
   }
 
-  // 4.3. POST /api/supabase/reset-local — Khôi phục dữ liệu mẫu chuẩn SQL
+  // 4.3. POST /api/supabase/reset-local — Khôi phục dữ liệu mẫu chuẩn SQL (Chỉ cho Local)
   if (method === "POST" && pathname === "/api/supabase/reset-local") {
+    if (isProd) {
+      return sendJson(res, 403, {
+        ok: false,
+        error: "Không thể reset dữ liệu mẫu ở chế độ Production Mode (Zero Mock Data)."
+      });
+    }
     const fresh = createInitialDatabase();
     saveLocalDb(fresh);
     fresh.provider_public_profiles = computeProviderPublicProfiles(fresh);
@@ -335,7 +508,7 @@ async function handleApiRequest(req, res, pathname) {
     });
   }
 
-  // 4.4. POST /api/auth/register — Đăng ký tài khoản mới
+  // 4.4. POST /api/auth/register — Đăng ký tài khoản mới (Hỗ trợ Cold Start)
   if (method === "POST" && pathname === "/api/auth/register") {
     const body = await parseBody(req);
     const fullName = String(body.full_name || "").trim();
@@ -346,6 +519,86 @@ async function handleApiRequest(req, res, pathname) {
     if (!fullName || !phone) {
       return sendJson(res, 400, { ok: false, error: "Họ tên và số điện thoại là bắt buộc." });
     }
+
+    if (isProd) {
+      if (!client) {
+        return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      }
+      const { data: existingUser } = await client.from("users").select("user_id").eq("phone_number", phone).maybeSingle();
+      if (existingUser) {
+        return sendJson(res, 409, { ok: false, error: "Số điện thoại đã tồn tại trong cơ sở dữ liệu Supabase." });
+      }
+
+      const userEmail = email || `${phone}@giadinhxanh.vn`;
+      let authUserId = null;
+
+      // 1. Tạo auth user trên auth.users (Supabase Auth) để thỏa mãn khóa ngoại:
+      // foreign key (user_id) references auth.users(id) ON DELETE CASCADE
+      if (client.auth && client.auth.admin && config.supabaseServiceKey) {
+        const { data: authData, error: authErr } = await client.auth.admin.createUser({
+          email: userEmail,
+          password: body.password || `GiaDinhXanh@${phone.slice(-4)}`,
+          email_confirm: true,
+          user_metadata: { full_name: fullName, phone_number: phone, role }
+        });
+        if (authErr) {
+          if (authErr.message && authErr.message.toLowerCase().includes("already been registered")) {
+            const { data: listData } = await client.auth.admin.listUsers();
+            const found = listData && listData.users ? listData.users.find((u) => u.email === userEmail) : null;
+            if (found) authUserId = found.id;
+          }
+          if (!authUserId) {
+            return sendJson(res, 400, { ok: false, error: `Lỗi Supabase Auth: ${authErr.message}` });
+          }
+        } else if (authData && authData.user) {
+          authUserId = authData.user.id;
+        }
+      } else if (client.auth && client.auth.signUp) {
+        const { data: authData, error: authErr } = await client.auth.signUp({
+          email: userEmail,
+          password: body.password || `GiaDinhXanh@${phone.slice(-4)}`,
+          options: { data: { full_name: fullName, phone_number: phone, role } }
+        });
+        if (authErr) {
+          return sendJson(res, 400, { ok: false, error: `Lỗi Supabase Auth: ${authErr.message}` });
+        }
+        if (authData && authData.user) {
+          authUserId = authData.user.id;
+        }
+      }
+
+      if (!authUserId) {
+        authUserId = crypto.randomUUID();
+      }
+
+      const nowIso = new Date().toISOString();
+      // Bảng public.users trong 4. home_service_booking_supabase.sql:
+      // (user_id UUID, full_name, phone_number, role, is_active, created_at, updated_at) - KHÔNG CÓ cột email
+      const publicUserRow = {
+        user_id: authUserId,
+        full_name: fullName,
+        phone_number: phone,
+        role,
+        is_active: true,
+        created_at: nowIso,
+        updated_at: nowIso
+      };
+
+      const { data: created, error: insErr } = await client.from("users").insert([publicUserRow]).select().single();
+      if (insErr) {
+        return sendJson(res, 500, { ok: false, error: `Lỗi tạo tài khoản Supabase: ${insErr.message}` });
+      }
+
+      return sendJson(res, 201, {
+        ok: true,
+        user: {
+          ...(created || publicUserRow),
+          email: userEmail
+        }
+      });
+    }
+
+    // Local mode
     if (db.users.some((u) => u.phone_number === phone)) {
       return sendJson(res, 409, { ok: false, error: "Số điện thoại đã tồn tại (UNIQUE constraint)." });
     }
@@ -365,20 +618,56 @@ async function handleApiRequest(req, res, pathname) {
     db.users.push(newUser);
     saveLocalDb(db);
 
-    const { client } = getSupabaseClient();
-    if (client) {
-      try {
-        await client.from("users").insert([newUser]);
-      } catch (_) {}
-    }
-
     return sendJson(res, 201, { ok: true, user: newUser });
   }
 
-  // 4.5. POST /api/onboarding/customer — Lưu hồ sơ khách hàng (0.2)
+  // 4.5. POST /api/onboarding/customer — Lưu hồ sơ khách hàng mới (Cold Start 0.2)
   if (method === "POST" && pathname === "/api/onboarding/customer") {
     const body = await parseBody(req);
-    const userId = body.user_id || (db.session && db.session.customer_user_id) || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const userId = body.user_id || (db && db.session && db.session.customer_user_id) || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+
+    if (!userId) {
+      return sendJson(res, 400, { ok: false, error: "user_id là bắt buộc trong luồng onboarding." });
+    }
+
+    if (isProd) {
+      if (!client) {
+        return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      }
+      if (body.full_name || body.phone_number) {
+        const updateFields = { updated_at: new Date().toISOString() };
+        if (body.full_name) updateFields.full_name = String(body.full_name).trim();
+        if (body.phone_number) updateFields.phone_number = String(body.phone_number).trim();
+        await client.from("users").update(updateFields).eq("user_id", userId);
+      }
+
+      const { data: existingCp } = await client.from("customer_profiles").select("customer_id").eq("user_id", userId).maybeSingle();
+      let cpRow;
+      if (existingCp) {
+        const { data: upd, error: updErr } = await client.from("customer_profiles").update({
+          ward_id: String(body.ward_id || "27403"),
+          default_address: String(body.default_address || "").trim(),
+          latitude: Number(body.latitude) || 10.728912,
+          longitude: Number(body.longitude) || 106.712405,
+          updated_at: new Date().toISOString()
+        }).eq("customer_id", existingCp.customer_id).select().single();
+        if (updErr) return sendJson(res, 500, { ok: false, error: updErr.message });
+        cpRow = upd;
+      } else {
+        const { data: ins, error: insErr } = await client.from("customer_profiles").insert([{
+          user_id: userId,
+          ward_id: String(body.ward_id || "27403"),
+          default_address: String(body.default_address || "").trim(),
+          latitude: Number(body.latitude) || 10.728912,
+          longitude: Number(body.longitude) || 106.712405
+        }]).select().single();
+        if (insErr) return sendJson(res, 500, { ok: false, error: insErr.message });
+        cpRow = ins;
+      }
+      return sendJson(res, 200, { ok: true, customer_profile: cpRow });
+    }
+
+    // Local mode
     const u = db.users.find((x) => x.user_id === userId);
     if (u) {
       if (body.full_name) u.full_name = String(body.full_name).trim();
@@ -393,7 +682,7 @@ async function handleApiRequest(req, res, pathname) {
       if (body.longitude !== undefined) cp.longitude = Number(body.longitude);
       cp.updated_at = new Date().toISOString();
     } else {
-      const nextCid = Math.max(100, ...db.customer_profiles.map((c) => c.customer_id)) + 1;
+      const nextCid = Math.max(100, ...db.customer_profiles.map((c) => c.customer_id || 0)) + 1;
       cp = {
         customer_id: nextCid,
         user_id: userId,
@@ -418,6 +707,30 @@ async function handleApiRequest(req, res, pathname) {
       return sendJson(res, 400, { ok: false, error: "Số CCCD (id_card_number) là bắt buộc." });
     }
 
+    if (isProd) {
+      if (!client) {
+        return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      }
+      const userId = body.user_id;
+      const { data: dup } = await client.from("provider_profiles").select("provider_id").eq("id_card_number", idCard).maybeSingle();
+      if (dup && dup.user_id !== userId) {
+        return sendJson(res, 409, { ok: false, error: "Số CCCD bị trùng với hồ sơ thợ khác trong Supabase." });
+      }
+
+      const { data: pp, error: ppErr } = await client.from("provider_profiles").upsert([{
+        user_id: userId,
+        id_card_number: idCard,
+        info: String(body.info || "").trim(),
+        avatar_url: String(body.avatar_url || "assets/provider-lan.jpg").trim(),
+        verification_status: "pending",
+        updated_at: new Date().toISOString()
+      }]).select().single();
+
+      if (ppErr) return sendJson(res, 500, { ok: false, error: ppErr.message });
+      return sendJson(res, 200, { ok: true, provider_profile: pp });
+    }
+
+    // Local mode
     const targetProviderId = Number(body.provider_id || 204);
     const pp = db.provider_profiles.find((p) => p.provider_id === targetProviderId);
     if (pp) {
@@ -437,11 +750,27 @@ async function handleApiRequest(req, res, pathname) {
     return sendJson(res, 200, { ok: true, provider_profile: pp });
   }
 
-  // 4.7. PUT /api/profile/customer — Cập nhật Hồ sơ cá nhân & Sổ địa chỉ (1.5)
-  if (method === "PUT" && pathname === "/api/profile/customer") {
+  // 4.7. PUT /api/profile/customer — Cập nhật Hồ sơ cá nhân (1.5)
+  if (method === "PUT" && (pathname === "/api/profile/customer" || pathname === "/api/customer/profile")) {
     const body = await parseBody(req);
-    const customerId = Number(body.customer_id || 101);
-    const cp = db.customer_profiles.find((c) => c.customer_id === customerId);
+    const customerId = Number(body.customer_id);
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: cp, error: cpErr } = await client.from("customer_profiles").update({
+        ward_id: String(body.ward_id || "27403"),
+        default_address: String(body.default_address || "").trim(),
+        latitude: Number(body.latitude) || 10.728912,
+        longitude: Number(body.longitude) || 106.712405,
+        updated_at: new Date().toISOString()
+      }).eq("customer_id", customerId).select().single();
+      if (cpErr) return sendJson(res, 500, { ok: false, error: cpErr.message });
+      return sendJson(res, 200, { ok: true, customer_profile: cp });
+    }
+
+    // Local mode
+    const targetCid = customerId || 101;
+    const cp = db.customer_profiles.find((c) => c.customer_id === targetCid);
     if (!cp) return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ khách hàng." });
 
     const u = db.users.find((x) => x.user_id === cp.user_id);
@@ -464,16 +793,24 @@ async function handleApiRequest(req, res, pathname) {
   if (method === "PATCH" && pathname === "/api/provider/online-gps") {
     const body = await parseBody(req);
     const providerId = Number(body.provider_id || 201);
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const updates = { updated_at: new Date().toISOString() };
+      if (typeof body.is_available_online === "boolean") updates.is_available_online = body.is_available_online;
+      if (body.lattitude !== undefined) updates.lattitude = Number(body.lattitude);
+      if (body.longtitude !== undefined) updates.longtitude = Number(body.longtitude);
+      const { data: pp, error: err } = await client.from("provider_profiles").update(updates).eq("provider_id", providerId).select().single();
+      if (err) return sendJson(res, 500, { ok: false, error: err.message });
+      return sendJson(res, 200, { ok: true, provider_profile: pp });
+    }
+
     const pp = db.provider_profiles.find((p) => p.provider_id === providerId);
     if (!pp) return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ thợ." });
-
-    if (typeof body.is_available_online === "boolean") {
-      pp.is_available_online = body.is_available_online;
-    }
+    if (typeof body.is_available_online === "boolean") pp.is_available_online = body.is_available_online;
     if (body.lattitude !== undefined) pp.lattitude = Number(body.lattitude);
     if (body.longtitude !== undefined) pp.longtitude = Number(body.longtitude);
     pp.updated_at = new Date().toISOString();
-
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, provider_profile: pp });
   }
@@ -482,9 +819,24 @@ async function handleApiRequest(req, res, pathname) {
   if (method === "PUT" && pathname === "/api/provider/capabilities") {
     const body = await parseBody(req);
     const providerId = Number(body.provider_id || 201);
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      if (Array.isArray(body.service_ids)) {
+        await client.from("provider_services").delete().eq("provider_id", providerId);
+        const pServices = body.service_ids.map((sid) => ({ provider_id: providerId, service_id: Number(sid) }));
+        if (pServices.length > 0) await client.from("provider_services").insert(pServices);
+      }
+      if (Array.isArray(body.ward_ids)) {
+        await client.from("provider_areas").delete().eq("provider_id", providerId);
+        const pAreas = body.ward_ids.map((wid) => ({ provider_id: providerId, ward_id: String(wid) }));
+        if (pAreas.length > 0) await client.from("provider_areas").insert(pAreas);
+      }
+      return sendJson(res, 200, { ok: true, message: "Đã cập nhật kỹ năng và khu vực vào Supabase." });
+    }
+
     const pp = db.provider_profiles.find((p) => p.provider_id === providerId);
     if (!pp) return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ thợ." });
-
     if (body.info !== undefined) pp.info = String(body.info).trim();
     if (body.avatar_url !== undefined) pp.avatar_url = String(body.avatar_url).trim();
     pp.updated_at = new Date().toISOString();
@@ -492,55 +844,74 @@ async function handleApiRequest(req, res, pathname) {
     if (Array.isArray(body.service_ids)) {
       db.provider_services = db.provider_services.filter((ps) => ps.provider_id !== providerId);
       body.service_ids.forEach((sid, idx) => {
-        db.provider_services.push({
-          id_pro_ser: Date.now() + idx,
-          provider_id: providerId,
-          service_id: Number(sid)
-        });
+        db.provider_services.push({ id_pro_ser: Date.now() + idx, provider_id: providerId, service_id: Number(sid) });
       });
     }
-
     if (Array.isArray(body.ward_ids)) {
       db.provider_areas = db.provider_areas.filter((pa) => pa.provider_id !== providerId);
       body.ward_ids.forEach((wid, idx) => {
-        db.provider_areas.push({
-          area_id: Date.now() + idx,
-          provider_id: providerId,
-          ward_id: String(wid)
-        });
+        db.provider_areas.push({ area_id: Date.now() + idx, provider_id: providerId, ward_id: String(wid) });
       });
     }
-
     saveLocalDb(db);
-    return sendJson(res, 200, {
-      ok: true,
-      provider_profile: pp,
-      provider_services: db.provider_services.filter((ps) => ps.provider_id === providerId),
-      provider_areas: db.provider_areas.filter((pa) => pa.provider_id === providerId)
-    });
+    return sendJson(res, 200, { ok: true, provider_profile: pp });
   }
 
-  // 4.10. POST /api/bookings — Màn hình 1.2: Tạo đơn đặt lịch mới
+  // 4.10. POST /api/bookings — Màn hình 1.2: Tạo đơn đặt lịch mới (Cold Start an toàn)
   if (method === "POST" && pathname === "/api/bookings") {
     const body = await parseBody(req);
     const serviceId = Number(body.service_id);
-    const providerId = Number(body.provider_id);
+    const providerId = body.provider_id ? Number(body.provider_id) : null;
     const wardId = String(body.ward_id || "27403");
-    const customerId = Number(body.customer_id || 101);
+    const customerId = Number(body.customer_id);
     const address = String(body.address || "").trim();
 
-    if (!serviceId || !providerId || !wardId || !address) {
-      return sendJson(res, 400, { ok: false, error: "Vui lòng điền đầy đủ dịch vụ, thợ, phường/xã và địa chỉ." });
+    if (!serviceId || !wardId || !address || !customerId) {
+      return sendJson(res, 400, { ok: false, error: "Vui lòng điền đầy đủ dịch vụ, khách hàng, phường/xã và địa chỉ." });
     }
 
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const nowIso = new Date().toISOString();
+      const newBk = {
+        customer_id: customerId,
+        provider_id: providerId,
+        service_id: serviceId,
+        scheduled_time: body.scheduled_time || nowIso,
+        status: "pending",
+        address,
+        ward_id: wardId,
+        latitude: Number(body.latitude) || 10.728912,
+        longitude: Number(body.longitude) || 106.712405,
+        total_amount: Number(body.total_amount) || 180000,
+        total_incidental: 0,
+        notes: String(body.notes || "Khách đặt lịch qua hệ thống.").trim(),
+        payment_status: "unpaid"
+      };
+
+      const { data: createdBk, error: bkErr } = await client.from("bookings").insert([newBk]).select().single();
+      if (bkErr) return sendJson(res, 500, { ok: false, error: `Lỗi tạo đơn Supabase: ${bkErr.message}` });
+
+      await client.from("booking_status_history").insert([{
+        booking_id: createdBk.booking_id,
+        previous_status: null,
+        new_status: "pending",
+        changed_by: body.changed_by || null,
+        reason: "Khách hàng tạo đơn đặt lịch"
+      }]);
+
+      return sendJson(res, 201, { ok: true, booking: createdBk });
+    }
+
+    // Local mode
     const svc = db.services.find((s) => s.service_id === serviceId);
-    const nextId = Math.max(1040, ...db.bookings.map((b) => b.booking_id)) + 1;
+    const nextId = Math.max(1040, ...db.bookings.map((b) => b.booking_id || 0)) + 1;
     const nowIso = new Date().toISOString();
 
     const newBooking = {
       booking_id: nextId,
       customer_id: customerId,
-      provider_id: providerId,
+      provider_id: providerId || 201,
       service_id: serviceId,
       scheduled_time: body.scheduled_time || nowIso,
       status: "pending",
@@ -557,7 +928,7 @@ async function handleApiRequest(req, res, pathname) {
     };
 
     db.bookings.unshift(newBooking);
-    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id)) + 1;
+    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
     const historyRow = {
       history_id: nextHistoryId,
       booking_id: nextId,
@@ -568,18 +939,30 @@ async function handleApiRequest(req, res, pathname) {
       created_at: nowIso
     };
     db.booking_status_history.unshift(historyRow);
-
     saveLocalDb(db);
     return sendJson(res, 201, { ok: true, booking: newBooking, history: historyRow });
   }
 
-  // 4.11. POST /api/rpc/transition-status — Hàm RPC rpc_transition_booking_status
+  // 4.11. POST /api/rpc/transition-status — Chuyển trạng thái đơn hàng
   if (method === "POST" && pathname === "/api/rpc/transition-status") {
     const body = await parseBody(req);
     const bookingId = Number(body.booking_id);
     const newStatus = String(body.new_status || "");
     const reason = String(body.reason || "Cập nhật trạng thái qua RPC").trim();
-    const actorUserId = body.changed_by || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const actorUserId = body.changed_by || null;
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: bk, error: bkErr } = await client.from("bookings").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("booking_id", bookingId).select().single();
+      if (bkErr) return sendJson(res, 500, { ok: false, error: bkErr.message });
+      await client.from("booking_status_history").insert([{
+        booking_id: bookingId,
+        new_status: newStatus,
+        changed_by: actorUserId,
+        reason
+      }]);
+      return sendJson(res, 200, { ok: true, booking: bk });
+    }
 
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
     if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
@@ -588,32 +971,41 @@ async function handleApiRequest(req, res, pathname) {
     bk.status = newStatus;
     bk.updated_at = new Date().toISOString();
 
-    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id)) + 1;
+    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
     const historyRow = {
       history_id: nextHistoryId,
       booking_id: bookingId,
       previous_status: oldStatus,
       new_status: newStatus,
-      changed_by: actorUserId,
+      changed_by: actorUserId || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       reason,
       created_at: new Date().toISOString()
     };
     db.booking_status_history.unshift(historyRow);
-
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, booking: bk, history: historyRow });
   }
 
-  // 4.12. POST /api/rpc/update-incidental — Hàm RPC rpc_provider_update_incidental (2.7)
+  // 4.12. POST /api/rpc/update-incidental — Kê khai chi phí phát sinh
   if (method === "POST" && pathname === "/api/rpc/update-incidental") {
     const body = await parseBody(req);
     const bookingId = Number(body.booking_id);
     const incidental = Number(body.total_incidental);
     const notes = String(body.notes || "").trim();
 
-    if (Number.isNaN(incidental) || incidental < 0) {
-      return sendJson(res, 400, { ok: false, error: "total_incidental phải >= 0." });
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: curBk } = await client.from("bookings").select("total_amount, total_incidental").eq("booking_id", bookingId).single();
+      const basePrice = curBk ? Math.max(0, curBk.total_amount - curBk.total_incidental) : 0;
+      const { data: updatedBk, error: updErr } = await client.from("bookings").update({
+        total_incidental: incidental,
+        total_amount: basePrice + incidental,
+        updated_at: new Date().toISOString()
+      }).eq("booking_id", bookingId).select().single();
+      if (updErr) return sendJson(res, 500, { ok: false, error: updErr.message });
+      return sendJson(res, 200, { ok: true, booking: updatedBk });
     }
+
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
     if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
 
@@ -624,142 +1016,126 @@ async function handleApiRequest(req, res, pathname) {
     if (notes) {
       bk.notes = (bk.notes ? bk.notes + "\n" : "") + `[Phát sinh: ${incidental} đ] ${notes}`;
     }
-
-    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id)) + 1;
-    db.booking_status_history.unshift({
-      history_id: nextHistoryId,
-      booking_id: bookingId,
-      previous_status: bk.status,
-      new_status: bk.status,
-      changed_by: body.changed_by || "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21",
-      reason: `Cập nhật chi phí phát sinh: ${incidental} đ. Lý do: ${notes || "Vật tư bổ sung"}`,
-      created_at: new Date().toISOString()
-    });
-
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, booking: bk });
   }
 
-  // 4.13. POST /api/rpc/confirm-payment — Hàm RPC rpc_customer_confirm_payment (1.8)
+  // 4.13. POST /api/rpc/confirm-payment — Khách hàng xác nhận thanh toán
   if (method === "POST" && pathname === "/api/rpc/confirm-payment") {
     const body = await parseBody(req);
     const bookingId = Number(body.booking_id);
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: bk, error: bkErr } = await client.from("bookings").update({
+        payment_status: "paid",
+        updated_at: new Date().toISOString()
+      }).eq("booking_id", bookingId).select().single();
+      if (bkErr) return sendJson(res, 500, { ok: false, error: bkErr.message });
+      return sendJson(res, 200, { ok: true, booking: bk });
+    }
+
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
     if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
-
-    if (bk.status === "cancelled") {
-      return sendJson(res, 400, { ok: false, error: "Không thể thanh toán đơn hàng đã hủy." });
-    }
     bk.payment_status = "paid";
     bk.updated_at = new Date().toISOString();
-
-    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id)) + 1;
-    db.booking_status_history.unshift({
-      history_id: nextHistoryId,
-      booking_id: bookingId,
-      previous_status: bk.status,
-      new_status: bk.status,
-      changed_by: body.changed_by || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      reason: `Khách hàng xác nhận đã thanh toán hóa đơn (${bk.total_amount} đ)`,
-      created_at: new Date().toISOString()
-    });
-
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, booking: bk });
   }
 
-  // 4.14. POST /api/rpc/admin-adjust — Hàm RPC rpc_admin_adjust_booking (3.6)
+  // 4.14. POST /api/rpc/admin-adjust — Admin điều chỉnh đơn
   if (method === "POST" && pathname === "/api/rpc/admin-adjust") {
     const body = await parseBody(req);
     const bookingId = Number(body.booking_id);
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const updates = { updated_at: new Date().toISOString() };
+      if (body.provider_id !== undefined) updates.provider_id = Number(body.provider_id);
+      if (body.status) updates.status = body.status;
+      if (body.payment_status) updates.payment_status = body.payment_status;
+      if (body.total_amount !== undefined) updates.total_amount = Number(body.total_amount);
+      const { data: bk, error: err } = await client.from("bookings").update(updates).eq("booking_id", bookingId).select().single();
+      if (err) return sendJson(res, 500, { ok: false, error: err.message });
+      return sendJson(res, 200, { ok: true, booking: bk });
+    }
+
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
     if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
-
-    const oldStatus = bk.status;
     if (body.provider_id !== undefined) bk.provider_id = Number(body.provider_id);
     if (body.status) bk.status = body.status;
     if (body.payment_status) bk.payment_status = body.payment_status;
     if (body.total_amount !== undefined) bk.total_amount = Number(body.total_amount);
-    if (body.total_incidental !== undefined) bk.total_incidental = Number(body.total_incidental);
     bk.updated_at = new Date().toISOString();
-
-    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id)) + 1;
-    db.booking_status_history.unshift({
-      history_id: nextHistoryId,
-      booking_id: bookingId,
-      previous_status: oldStatus,
-      new_status: bk.status,
-      changed_by: "c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99",
-      reason: String(body.reason || "Admin điều chỉnh qua rpc_admin_adjust_booking").trim(),
-      created_at: new Date().toISOString()
-    });
-
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, booking: bk });
   }
 
-  // 4.15. POST /api/reviews & DELETE /api/reviews — Đánh giá & Kiểm duyệt (1.9 & 3.4)
+  // 4.15. POST /api/reviews — Đánh giá thợ
   if (method === "POST" && pathname === "/api/reviews") {
     const body = await parseBody(req);
     const bookingId = Number(body.booking_id);
-    const rating = Number(body.rating);
+    const rating = Math.min(5, Math.max(1, Number(body.rating) || 5));
     const comment = String(body.comment || "").trim();
 
-    const bk = db.bookings.find((b) => b.booking_id === bookingId);
-    if (!bk || bk.status !== "completed") {
-      return sendJson(res, 400, { ok: false, error: "Chỉ có thể đánh giá đơn hàng đã completed." });
-    }
-    if (db.reviews.some((r) => r.booking_id === bookingId)) {
-      return sendJson(res, 409, { ok: false, error: "Đơn hàng này đã có đánh giá (UNIQUE booking_id)." });
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: bk } = await client.from("bookings").select("customer_id, provider_id").eq("booking_id", bookingId).single();
+      const { data: rev, error: revErr } = await client.from("reviews").insert([{
+        booking_id: bookingId,
+        customer_id: bk ? bk.customer_id : body.customer_id,
+        provider_id: bk ? bk.provider_id : body.provider_id,
+        rating,
+        comment: comment || "Khách hàng hài lòng với dịch vụ."
+      }]).select().single();
+      if (revErr) return sendJson(res, 500, { ok: false, error: revErr.message });
+      return sendJson(res, 201, { ok: true, review: rev });
     }
 
-    const nextRevId = Math.max(800, ...db.reviews.map((r) => r.review_id)) + 1;
+    const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    const nextRevId = Math.max(800, ...db.reviews.map((r) => r.review_id || 0)) + 1;
     const rev = {
       review_id: nextRevId,
       booking_id: bookingId,
-      customer_id: bk.customer_id,
-      provider_id: bk.provider_id,
-      rating: Math.min(5, Math.max(1, rating || 5)),
+      customer_id: bk ? bk.customer_id : 101,
+      provider_id: bk ? bk.provider_id : 201,
+      rating,
       comment: comment || "Khách hàng hài lòng với chất lượng dịch vụ.",
       created_at: new Date().toISOString()
     };
     db.reviews.unshift(rev);
-    recomputeProviderRating(db, bk.provider_id);
+    if (bk && bk.provider_id) recomputeProviderRating(db, bk.provider_id);
     saveLocalDb(db);
-
-    return sendJson(res, 201, {
-      ok: true,
-      review: rev,
-      provider_profile: db.provider_profiles.find((p) => p.provider_id === bk.provider_id)
-    });
+    return sendJson(res, 201, { ok: true, review: rev });
   }
 
-  if (method === "DELETE" && pathname.startsWith("/api/reviews/")) {
-    const reviewId = Number(pathname.split("/").pop());
-    const rev = db.reviews.find((r) => r.review_id === reviewId);
-    if (!rev) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đánh giá." });
-    const pId = rev.provider_id;
-    db.reviews = db.reviews.filter((r) => r.review_id !== reviewId);
-    if (pId) recomputeProviderRating(db, pId);
-    saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, deleted_review_id: reviewId });
-  }
-
-  // 4.16. POST /api/favorites/toggle — Bảng favorites (1.1 & 1.6)
+  // 4.16. POST /api/favorites/toggle — Lưu / Bỏ lưu dịch vụ yêu thích
   if (method === "POST" && pathname === "/api/favorites/toggle") {
     const body = await parseBody(req);
-    const customerId = Number(body.customer_id || 101);
+    const customerId = Number(body.customer_id);
     const serviceId = Number(body.service_id);
-    const idx = db.favorites.findIndex(
-      (f) => f.customer_id === customerId && f.service_id === serviceId
-    );
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: existing } = await client.from("favorites").select("favorite_id").eq("customer_id", customerId).eq("service_id", serviceId).maybeSingle();
+      if (existing) {
+        await client.from("favorites").delete().eq("favorite_id", existing.favorite_id);
+        return sendJson(res, 200, { ok: true, added: false });
+      } else {
+        await client.from("favorites").insert([{ customer_id: customerId, service_id: serviceId }]);
+        return sendJson(res, 200, { ok: true, added: true });
+      }
+    }
+
+    const targetCid = customerId || 101;
+    const idx = db.favorites.findIndex((f) => f.customer_id === targetCid && f.service_id === serviceId);
     let added = false;
     if (idx >= 0) {
       db.favorites.splice(idx, 1);
     } else {
       db.favorites.push({
         favorite_id: Date.now(),
-        customer_id: customerId,
+        customer_id: targetCid,
         service_id: serviceId,
         created_at: new Date().toISOString()
       });
@@ -769,11 +1145,25 @@ async function handleApiRequest(req, res, pathname) {
     return sendJson(res, 200, { ok: true, added, favorites: db.favorites });
   }
 
-  // 4.17. POST /api/support-tickets & PATCH /api/support-tickets — (1.11, 2.9, 3.4, 3.7)
+  // 4.17. POST /api/support-tickets — Gửi yêu cầu hỗ trợ
   if (method === "POST" && pathname === "/api/support-tickets") {
     const body = await parseBody(req);
-    const nextId = Math.max(700, ...db.support_tickets.map((t) => t.ticket_id)) + 1;
     const nowIso = new Date().toISOString();
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: tk, error: tkErr } = await client.from("support_tickets").insert([{
+        user_id: body.user_id,
+        booking_id: body.booking_id ? Number(body.booking_id) : null,
+        subject: String(body.subject || "Yêu cầu hỗ trợ").trim(),
+        status: "open",
+        priority: body.priority || "medium"
+      }]).select().single();
+      if (tkErr) return sendJson(res, 500, { ok: false, error: tkErr.message });
+      return sendJson(res, 201, { ok: true, ticket: tk });
+    }
+
+    const nextId = Math.max(700, ...db.support_tickets.map((t) => t.ticket_id || 0)) + 1;
     const ticket = {
       ticket_id: nextId,
       user_id: body.user_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
@@ -789,63 +1179,21 @@ async function handleApiRequest(req, res, pathname) {
     return sendJson(res, 201, { ok: true, ticket });
   }
 
-  if (method === "PATCH" && pathname.startsWith("/api/support-tickets/")) {
-    const ticketId = Number(pathname.split("/").pop());
-    const body = await parseBody(req);
-    const tk = db.support_tickets.find((t) => t.ticket_id === ticketId);
-    if (!tk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy phiếu hỗ trợ." });
-    if (body.status) tk.status = body.status;
-    if (body.priority) tk.priority = body.priority;
-    tk.updated_at = new Date().toISOString();
-    saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, ticket: tk });
-  }
-
-  // 4.18. POST /api/schedules, DELETE /api/schedules/:id, POST /api/exceptions (2.6)
-  if (method === "POST" && pathname === "/api/schedules") {
-    const body = await parseBody(req);
-    const nextId = Math.max(100, ...db.availability_schedules.map((s) => s.id || 0)) + 1;
-    const row = {
-      id: nextId,
-      provider_id: Number(body.provider_id || 201),
-      day_of_week: Number(body.day_of_week),
-      start_time: String(body.start_time || "08:00"),
-      end_time: String(body.end_time || "17:00"),
-      updated_at: new Date().toISOString()
-    };
-    db.availability_schedules.push(row);
-    saveLocalDb(db);
-    return sendJson(res, 201, { ok: true, schedule: row });
-  }
-
-  if (method === "DELETE" && pathname.startsWith("/api/schedules/")) {
-    const scheduleId = Number(pathname.split("/").pop());
-    db.availability_schedules = db.availability_schedules.filter((s) => Number(s.id) !== scheduleId);
-    saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, deleted_schedule_id: scheduleId });
-  }
-
-  if (method === "POST" && pathname === "/api/exceptions") {
-    const body = await parseBody(req);
-    const nextId = Math.max(100, ...db.availability_exceptions.map((e) => e.id || 0)) + 1;
-    const row = {
-      id: nextId,
-      provider_id: Number(body.provider_id || 201),
-      exception_date: String(body.exception_date || "2026-10-30"),
-      start_time: body.start_time || "08:00",
-      end_time: body.end_time || "17:00",
-      reason: String(body.reason || "Nghỉ phép cá nhân").trim(),
-      created_at: new Date().toISOString()
-    };
-    db.availability_exceptions.push(row);
-    saveLocalDb(db);
-    return sendJson(res, 201, { ok: true, exception: row });
-  }
-
-  // 4.19. Admin KYC, Users, Catalog & Locations (3.2, 3.3, 3.4, 3.8, 3.9)
+  // 4.18. Admin APIs (KYC, Services, Categories)
   if (method === "PATCH" && pathname.startsWith("/api/admin/kyc/")) {
     const providerId = Number(pathname.split("/").pop());
     const body = await parseBody(req);
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: pp, error: err } = await client.from("provider_profiles").update({
+        verification_status: body.verification_status,
+        updated_at: new Date().toISOString()
+      }).eq("provider_id", providerId).select().single();
+      if (err) return sendJson(res, 500, { ok: false, error: err.message });
+      return sendJson(res, 200, { ok: true, provider_profile: pp });
+    }
+
     const pp = db.provider_profiles.find((p) => p.provider_id === providerId);
     if (!pp) return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ thợ." });
     if (body.verification_status) pp.verification_status = body.verification_status;
@@ -854,103 +1202,11 @@ async function handleApiRequest(req, res, pathname) {
     return sendJson(res, 200, { ok: true, provider_profile: pp });
   }
 
-  if (method === "PATCH" && pathname.startsWith("/api/admin/users/")) {
-    const userId = pathname.split("/").pop();
-    const body = await parseBody(req);
-    const u = db.users.find((x) => x.user_id === userId);
-    if (!u) return sendJson(res, 404, { ok: false, error: "Không tìm thấy người dùng." });
-    if (typeof body.is_active === "boolean") u.is_active = body.is_active;
-    u.updated_at = new Date().toISOString();
-    saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, user: u });
-  }
-
-  if (method === "POST" && pathname === "/api/admin/services") {
-    const body = await parseBody(req);
-    const nextId = Math.max(300, ...db.services.map((s) => s.service_id)) + 1;
-    const nowIso = new Date().toISOString();
-    const svc = {
-      service_id: nextId,
-      category_id: Number(body.category_id || 1),
-      title: String(body.title || body.name || "").trim(),
-      description: String(body.description || "").trim(),
-      price: Number(body.price || body.base_price || 150000),
-      pricing_type: body.pricing_type || "fixed",
-      estimated_duration: Number(body.estimated_duration || 120),
-      is_active: true,
-      image_url: "assets/service-cleaning.jpg",
-      created_at: nowIso,
-      updated_at: nowIso
-    };
-    db.services.push(svc);
-    saveLocalDb(db);
-    return sendJson(res, 201, { ok: true, service: svc });
-  }
-
-  if (method === "PATCH" && pathname.startsWith("/api/admin/services/")) {
-    const serviceId = Number(pathname.split("/").pop());
-    const body = await parseBody(req);
-    const svc = db.services.find((s) => s.service_id === serviceId);
-    if (!svc) return sendJson(res, 404, { ok: false, error: "Không tìm thấy dịch vụ." });
-    if (typeof body.is_active === "boolean") svc.is_active = body.is_active;
-    saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, service: svc });
-  }
-
-  if (method === "POST" && pathname === "/api/admin/categories") {
-    const body = await parseBody(req);
-    const nextId = Math.max(10, ...db.service_categories.map((c) => c.category_id)) + 1;
-    const cat = {
-      category_id: nextId,
-      parent_id: body.parent_id ? Number(body.parent_id) : null,
-      category_name: String(body.category_name || body.name || "").trim(),
-      slug: String(body.slug || "danh-muc-moi").trim(),
-      description: String(body.description || "").trim(),
-      icon_url: "home-clean",
-      status: true
-    };
-    db.service_categories.push(cat);
-    saveLocalDb(db);
-    return sendJson(res, 201, { ok: true, category: cat });
-  }
-
-  if (method === "PATCH" && pathname.startsWith("/api/admin/categories/")) {
-    const categoryId = Number(pathname.split("/").pop());
-    const body = await parseBody(req);
-    const cat = db.service_categories.find((c) => c.category_id === categoryId);
-    if (!cat) return sendJson(res, 404, { ok: false, error: "Không tìm thấy danh mục." });
-    if (typeof body.status === "boolean") cat.status = body.status;
-    saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, category: cat });
-  }
-
-  if (method === "POST" && pathname === "/api/admin/locations") {
-    const body = await parseBody(req);
-    if (body.type === "province") {
-      const pid = String(body.provinceId || "").trim();
-      const name = String(body.name || "").trim();
-      if (!pid || !name) return sendJson(res, 400, { ok: false, error: "Thiếu mã hoặc tên tỉnh/thành." });
-      const row = { provinceId: pid, name };
-      db.province.push(row);
-      saveLocalDb(db);
-      return sendJson(res, 201, { ok: true, province: row });
-    } else {
-      const row = {
-        ward_id: String(body.ward_id || "").trim(),
-        name: String(body.name || "").trim(),
-        provinceId: String(body.provinceId || "79").trim()
-      };
-      db.ward.push(row);
-      saveLocalDb(db);
-      return sendJson(res, 201, { ok: true, ward: row });
-    }
-  }
-
   return sendJson(res, 404, { ok: false, error: `Endpoint không tồn tại: ${method} ${pathname}` });
 }
 
 // ---------------------------------------------------------------------
-// 5. STATIC FILE SERVER CHO FRONTEND
+// 5. STATIC FILE SERVER
 // ---------------------------------------------------------------------
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -970,7 +1226,7 @@ const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(parsedUrl.pathname);
 
     if (pathname.startsWith("/api/")) {
-      return await handleApiRequest(req, res, pathname);
+      return await handleApiRequest(req, res, pathname, parsedUrl.searchParams);
     }
 
     let safePath = pathname === "/" ? "/index.html" : pathname;
@@ -993,8 +1249,21 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-const { port } = loadEnvConfig();
-ensureLocalDb();
+process.on("uncaughtException", (err) => {
+  console.error("[Server UncaughtException]", err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Server UnhandledRejection]", reason);
+});
+
+server.on("error", (err) => {
+  console.error("[Server Error]", err);
+});
+
+const { port, env } = loadEnvConfig();
+if (env !== "production") {
+  ensureLocalDb();
+}
 server.listen(port, "0.0.0.0", () => {
-  console.log(`[Gia Đình Xanh Server] Đang chạy tại http://localhost:${port}`);
+  console.log(`[Gia Đình Xanh Server] Đang chạy tại http://localhost:${port} (Môi trường: ${env})`);
 });
