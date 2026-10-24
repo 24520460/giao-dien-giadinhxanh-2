@@ -174,8 +174,8 @@
       "id_card_number": "079188004512",
       "avatar_url": "assets/provider-lan.jpg",
       "verification_status": "verified",
-      "average_rating": 5,
-      "total_reviews": 2,
+      "average_rating": 4.95,
+      "total_reviews": 42,
       "lattitude": 10.73124,
       "longtitude": 106.71589,
       "is_available_online": true,
@@ -251,7 +251,8 @@
       "slug": "ve-sinh-cham-soc-nha-cua",
       "description": "Các gói dọn dẹp nhà theo giờ, tổng vệ sinh định kỳ và làm sạch rèm, nệm, sofa tại nhà.",
       "icon_url": "home-clean",
-      "status": true
+      "status": true,
+      "name": "Vệ sinh & Chăm sóc Nhà cửa"
     },
     {
       "category_id": 2,
@@ -260,7 +261,8 @@
       "slug": "thiet-bi-gia-dung-noi-tro",
       "description": "Vệ sinh máy lạnh, chăm sóc thiết bị gia đình và hỗ trợ nấu ăn, giặt ủi theo ca.",
       "icon_url": "appliance-care",
-      "status": true
+      "status": true,
+      "name": "Thiết bị Gia dụng & Nội trợ"
     },
     {
       "category_id": 3,
@@ -269,7 +271,8 @@
       "slug": "don-dep-nha-theo-gio",
       "description": "Lau dọn phòng khách, phòng ngủ, bếp và nhà vệ sinh linh hoạt theo số giờ đặt lịch.",
       "icon_url": "clock-clean",
-      "status": true
+      "status": true,
+      "name": "Dọn dẹp nhà theo giờ"
     },
     {
       "category_id": 4,
@@ -278,7 +281,8 @@
       "slug": "tong-ve-sinh-giat-nem-sofa",
       "description": "Làm sạch toàn diện căn hộ và vệ sinh bề mặt ghế sofa, nệm ngủ gia đình.",
       "icon_url": "sofa-clean",
-      "status": true
+      "status": true,
+      "name": "Tổng vệ sinh & Giặt nệm sofa"
     },
     {
       "category_id": 5,
@@ -287,7 +291,8 @@
       "slug": "ve-sinh-may-lanh-thiet-bi",
       "description": "Xịt rửa dàn lạnh, dàn nóng và lưới lọc bụi cho máy lạnh treo tường gia đình.",
       "icon_url": "air-conditioner",
-      "status": true
+      "status": true,
+      "name": "Vệ sinh Máy lạnh & Thiết bị"
     },
     {
       "category_id": 6,
@@ -296,7 +301,8 @@
       "slug": "nau-an-ho-tro-noi-tro",
       "description": "Sơ chế nguyên liệu, nấu bữa cơm gia đình và dọn rửa khu vực bếp sau khi nấu.",
       "icon_url": "kitchen-utensils",
-      "status": true
+      "status": true,
+      "name": "Nấu ăn & Hỗ trợ Nội trợ"
     }
   ],
   "services": [
@@ -601,24 +607,6 @@
   ],
   "bookings": [
     {
-      "booking_id": 1045,
-      "customer_id": 101,
-      "provider_id": 201,
-      "service_id": 301,
-      "scheduled_time": "2026-10-25T02:00:00.000Z",
-      "status": "pending",
-      "address": "Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng",
-      "ward_id": "27403",
-      "latitude": 10.72951,
-      "longitude": 106.7218,
-      "total_amount": 255000,
-      "total_incidental": 0,
-      "notes": "Nhà có trẻ nhỏ, vui lòng gọi điện trước 10 phút khi đến sảnh căn hộ.",
-      "payment_status": "unpaid",
-      "created_at": "2026-10-24T03:11:41.486Z",
-      "updated_at": "2026-10-24T03:11:41.486Z"
-    },
-    {
       "booking_id": 1042,
       "customer_id": 101,
       "provider_id": 201,
@@ -765,15 +753,6 @@
   ],
   "booking_status_history": [
     {
-      "history_id": 5007,
-      "booking_id": 1045,
-      "previous_status": null,
-      "new_status": "pending",
-      "changed_by": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      "reason": "Khách hàng tạo đơn đặt lịch qua Booking Wizard 1.2",
-      "created_at": "2026-10-24T03:11:41.486Z"
-    },
-    {
       "history_id": 5001,
       "booking_id": 1042,
       "previous_status": null,
@@ -829,15 +808,6 @@
     }
   ],
   "reviews": [
-    {
-      "review_id": 804,
-      "booking_id": 1040,
-      "customer_id": 101,
-      "provider_id": 201,
-      "rating": 5,
-      "comment": "Thợ đến đúng giờ, thao tác cẩn thận, dọn dẹp sạch sẽ khu vực làm việc trước khi ra về.",
-      "created_at": "2026-10-24T03:12:13.931Z"
-    },
     {
       "review_id": 801,
       "booking_id": 1039,
@@ -916,6 +886,41 @@
       "priority": "urgent",
       "created_at": "2026-10-22T07:18:00+07:00",
       "updated_at": "2026-10-22T07:35:00+07:00"
+    }
+  ],
+  "provider_public_profiles": [
+    {
+      "provider_id": 201,
+      "full_name": "Đặng Thị Mai Lan",
+      "info": "5 năm kinh nghiệm dọn dẹp nhà cửa theo giờ, ủi quần áo và sắp xếp tủ đồ gia đình tại khu vực Quận 7 và Quận 1.",
+      "avatar_url": "assets/provider-lan.jpg",
+      "average_rating": 4.95,
+      "total_reviews": 42,
+      "is_available_online": true,
+      "lattitude": 10.73124,
+      "longtitude": 106.71589
+    },
+    {
+      "provider_id": 202,
+      "full_name": "Lê Hoàng Tuấn",
+      "info": "Thợ kỹ thuật vệ sinh máy lạnh treo tường, giặt sofa nệm và tổng vệ sinh căn hộ sau sửa chữa.",
+      "avatar_url": "assets/provider-tuan.jpg",
+      "average_rating": 4.85,
+      "total_reviews": 31,
+      "is_available_online": true,
+      "lattitude": 10.73541,
+      "longtitude": 106.72011
+    },
+    {
+      "provider_id": 203,
+      "full_name": "Phạm Thu Hà",
+      "info": "Nhận nấu ăn gia đình theo buổi, sơ chế thực phẩm và dọn dẹp gian bếp gọn gàng tại Quận 1, Quận 3, Quận 7.",
+      "avatar_url": "assets/provider-ha.jpg",
+      "average_rating": 4.9,
+      "total_reviews": 27,
+      "is_available_online": true,
+      "lattitude": 10.78912,
+      "longtitude": 106.70145
     }
   ]
 }

@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "test": "node --test test/api.test.js",
+    "lint": "node --check server.js db-mock.js app.js test/api.test.js",
     "inspect": "node \"D:\\hao\\hao\\02_DU_AN_VA_LAP_TRINH\\taste-skill\\skills\\taste-skill\\scripts\\inspect.mjs\" http://127.0.0.1:3000 --app"
   },
   "dependencies": {
