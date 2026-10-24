@@ -174,8 +174,8 @@
       "id_card_number": "079188004512",
       "avatar_url": "assets/provider-lan.jpg",
       "verification_status": "verified",
-      "average_rating": 4.95,
-      "total_reviews": 42,
+      "average_rating": 5,
+      "total_reviews": 2,
       "lattitude": 10.73124,
       "longtitude": 106.71589,
       "is_available_online": true,
@@ -601,6 +601,24 @@
   ],
   "bookings": [
     {
+      "booking_id": 1045,
+      "customer_id": 101,
+      "provider_id": 201,
+      "service_id": 301,
+      "scheduled_time": "2026-10-25T02:00:00.000Z",
+      "status": "pending",
+      "address": "Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng",
+      "ward_id": "27403",
+      "latitude": 10.72951,
+      "longitude": 106.7218,
+      "total_amount": 255000,
+      "total_incidental": 0,
+      "notes": "Nhà có trẻ nhỏ, vui lòng gọi điện trước 10 phút khi đến sảnh căn hộ.",
+      "payment_status": "unpaid",
+      "created_at": "2026-10-24T03:11:41.486Z",
+      "updated_at": "2026-10-24T03:11:41.486Z"
+    },
+    {
       "booking_id": 1042,
       "customer_id": 101,
       "provider_id": 201,
@@ -707,9 +725,54 @@
       "notes": "Giặt bộ ghế sofa vải chữ L phòng khách.",
       "created_at": "2026-10-21T14:00:00+07:00",
       "updated_at": "2026-10-22T07:30:00+07:00"
+    },
+    {
+      "booking_id": 1038,
+      "customer_id": 102,
+      "provider_id": 202,
+      "service_id": 304,
+      "scheduled_time": "2026-10-18T14:00:00+07:00",
+      "address": "Căn hộ T2-1804, Chung cư Thảo Điền, 159 Xa Lộ Hà Nội",
+      "ward_id": "27088",
+      "latitude": 10.802145,
+      "longitude": 106.742118,
+      "total_incidental": 0,
+      "total_amount": 300000,
+      "status": "completed",
+      "payment_status": "paid",
+      "notes": "Xịt rửa 2 máy lạnh phòng khách và phòng ngủ chính.",
+      "created_at": "2026-10-17T09:00:00+07:00",
+      "updated_at": "2026-10-18T16:10:00+07:00"
+    },
+    {
+      "booking_id": 1037,
+      "customer_id": 101,
+      "provider_id": 201,
+      "service_id": 302,
+      "scheduled_time": "2026-10-15T08:30:00+07:00",
+      "address": "Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng",
+      "ward_id": "27403",
+      "latitude": 10.728912,
+      "longitude": 106.712405,
+      "total_incidental": 0,
+      "total_amount": 450000,
+      "status": "completed",
+      "payment_status": "paid",
+      "notes": "Tổng vệ sinh căn hộ định kỳ cuối tuần.",
+      "created_at": "2026-10-14T11:20:00+07:00",
+      "updated_at": "2026-10-15T12:00:00+07:00"
     }
   ],
   "booking_status_history": [
+    {
+      "history_id": 5007,
+      "booking_id": 1045,
+      "previous_status": null,
+      "new_status": "pending",
+      "changed_by": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      "reason": "Khách hàng tạo đơn đặt lịch qua Booking Wizard 1.2",
+      "created_at": "2026-10-24T03:11:41.486Z"
+    },
     {
       "history_id": 5001,
       "booking_id": 1042,
@@ -767,6 +830,15 @@
   ],
   "reviews": [
     {
+      "review_id": 804,
+      "booking_id": 1040,
+      "customer_id": 101,
+      "provider_id": 201,
+      "rating": 5,
+      "comment": "Thợ đến đúng giờ, thao tác cẩn thận, dọn dẹp sạch sẽ khu vực làm việc trước khi ra về.",
+      "created_at": "2026-10-24T03:12:13.931Z"
+    },
+    {
       "review_id": 801,
       "booking_id": 1039,
       "customer_id": 101,
@@ -774,6 +846,24 @@
       "rating": 5,
       "comment": "Chị Thu Hà đến đúng giờ, sơ chế sạch sẽ và nấu các món gia đình vừa miệng. Khu vực bếp được lau dọn gọn gàng sau khi nấu xong.",
       "created_at": "2026-10-20T20:10:00+07:00"
+    },
+    {
+      "review_id": 802,
+      "booking_id": 1037,
+      "customer_id": 101,
+      "provider_id": 201,
+      "rating": 5,
+      "comment": "Chị Mai Lan làm việc rất tỉ mỉ, lau sạch toàn bộ kệ sách, ban công và sắp xếp lại đồ đạc phòng khách rất ngăn nắp.",
+      "created_at": "2026-10-15T14:20:00+07:00"
+    },
+    {
+      "review_id": 803,
+      "booking_id": 1038,
+      "customer_id": 102,
+      "provider_id": 202,
+      "rating": 5,
+      "comment": "Anh Hoàng Tuấn mang đầy đủ bạt che nước và máy xịt áp lực, vệ sinh 2 máy lạnh rất kỹ, không làm bắn nước ra sàn gỗ.",
+      "created_at": "2026-10-18T17:30:00+07:00"
     }
   ],
   "favorites": [
