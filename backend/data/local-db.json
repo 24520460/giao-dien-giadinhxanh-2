@@ -65,13 +65,13 @@
   "users": [
     {
       "user_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      "full_name": "Nguyễn Minh Thảo",
-      "phone_number": "0908341289",
+      "full_name": "Nguyễn Minh Thảo Cập Nhật",
+      "phone_number": "0901234567",
       "email": "minhthao.q7@gmail.com",
       "role": "customer",
       "is_active": true,
       "created_at": "2026-08-12T08:15:00+07:00",
-      "updated_at": "2026-10-20T09:10:00+07:00"
+      "updated_at": "2026-10-24T14:48:36.326Z"
     },
     {
       "user_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
@@ -142,18 +142,29 @@
       "is_active": true,
       "created_at": "2026-05-01T00:00:00+07:00",
       "updated_at": "2026-10-23T08:00:00+07:00"
+    },
+    {
+      "user_id": "a0000000-0000-4000-8000-792853316756",
+      "full_name": "Nguyễn Văn Test",
+      "phone_number": "0936656360",
+      "email": "0936656360@test.vn",
+      "password": "StrongPassword123",
+      "role": "customer",
+      "is_active": true,
+      "created_at": "2026-10-24T14:48:36.756Z",
+      "updated_at": "2026-10-24T14:48:36.756Z"
     }
   ],
   "customer_profiles": [
     {
       "customer_id": 101,
       "user_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      "default_address": "Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng",
-      "ward_id": "27403",
-      "latitude": 10.728912,
-      "longitude": 106.712405,
+      "default_address": "Số 45 Đường Lê Duẩn, Phường Bến Nghé, Quận 1",
+      "ward_id": "26734",
+      "latitude": 10.779123,
+      "longitude": 106.699876,
       "created_at": "2026-08-12T08:16:00+07:00",
-      "updated_at": "2026-10-20T09:10:00+07:00"
+      "updated_at": "2026-10-24T14:48:36.326Z"
     },
     {
       "customer_id": 102,
@@ -247,140 +258,100 @@
     {
       "category_id": 1,
       "parent_id": null,
-      "category_name": "Vệ sinh & Chăm sóc Nhà cửa",
-      "slug": "ve-sinh-cham-soc-nha-cua",
-      "description": "Các gói dọn dẹp nhà theo giờ, tổng vệ sinh định kỳ và làm sạch rèm, nệm, sofa tại nhà.",
+      "category_name": "Dọn dẹp nhà cửa (Home Cleaning)",
+      "slug": "don-dep-nha-cua",
+      "description": "Dọn dẹp phòng khách, phòng ngủ, khu vực bếp, nhà vệ sinh và tổng vệ sinh căn hộ chuyên sâu.",
       "icon_url": "home-clean",
       "status": true,
-      "name": "Vệ sinh & Chăm sóc Nhà cửa"
+      "name": "Dọn dẹp nhà cửa (Home Cleaning)"
     },
     {
       "category_id": 2,
       "parent_id": null,
-      "category_name": "Thiết bị Gia dụng & Nội trợ",
-      "slug": "thiet-bi-gia-dung-noi-tro",
-      "description": "Vệ sinh máy lạnh, chăm sóc thiết bị gia đình và hỗ trợ nấu ăn, giặt ủi theo ca.",
-      "icon_url": "appliance-care",
-      "status": true,
-      "name": "Thiết bị Gia dụng & Nội trợ"
-    },
-    {
-      "category_id": 3,
-      "parent_id": 1,
-      "category_name": "Dọn dẹp nhà theo giờ",
-      "slug": "don-dep-nha-theo-gio",
-      "description": "Lau dọn phòng khách, phòng ngủ, bếp và nhà vệ sinh linh hoạt theo số giờ đặt lịch.",
-      "icon_url": "clock-clean",
-      "status": true,
-      "name": "Dọn dẹp nhà theo giờ"
-    },
-    {
-      "category_id": 4,
-      "parent_id": 1,
-      "category_name": "Tổng vệ sinh & Giặt nệm sofa",
-      "slug": "tong-ve-sinh-giat-nem-sofa",
-      "description": "Làm sạch toàn diện căn hộ và vệ sinh bề mặt ghế sofa, nệm ngủ gia đình.",
-      "icon_url": "sofa-clean",
-      "status": true,
-      "name": "Tổng vệ sinh & Giặt nệm sofa"
-    },
-    {
-      "category_id": 5,
-      "parent_id": 2,
-      "category_name": "Vệ sinh Máy lạnh & Thiết bị",
-      "slug": "ve-sinh-may-lanh-thiet-bi",
-      "description": "Xịt rửa dàn lạnh, dàn nóng và lưới lọc bụi cho máy lạnh treo tường gia đình.",
-      "icon_url": "air-conditioner",
-      "status": true,
-      "name": "Vệ sinh Máy lạnh & Thiết bị"
-    },
-    {
-      "category_id": 6,
-      "parent_id": 2,
-      "category_name": "Nấu ăn & Hỗ trợ Nội trợ",
-      "slug": "nau-an-ho-tro-noi-tro",
-      "description": "Sơ chế nguyên liệu, nấu bữa cơm gia đình và dọn rửa khu vực bếp sau khi nấu.",
+      "category_name": "Nấu ăn tại nhà (Home Cooking)",
+      "slug": "nau-an-tai-nha",
+      "description": "Đầu bếp sơ chế thực phẩm sạch, nấu mâm cơm gia đình ấm cúng chuẩn vị và dọn sạch gian bếp.",
       "icon_url": "kitchen-utensils",
       "status": true,
-      "name": "Nấu ăn & Hỗ trợ Nội trợ"
+      "name": "Nấu ăn tại nhà (Home Cooking)"
     }
   ],
   "services": [
     {
       "service_id": 301,
-      "category_id": 3,
+      "category_id": 1,
       "title": "Dọn dẹp nhà cửa theo giờ tiêu chuẩn",
-      "description": "Lau chùi sàn nhà, bề mặt bàn ghế, dọn gọn phòng ngủ, khu vực bếp, nhà vệ sinh và thu gom rác sinh hoạt trong gia đình.",
+      "description": "Lau dọn phòng khách, phòng ngủ, lau chùi bàn ghế, hút bụi sàn nhà, vệ sinh nhà tắm và thu gom rác sinh hoạt.",
       "price": 85000,
       "pricing_type": "hourly",
       "estimated_duration": 180,
       "is_active": true,
-      "image_url": "assets/service-cleaning.jpg",
+      "image_url": "assets/cleaning-livingroom.jpg",
       "created_at": "2026-06-01T00:00:00+07:00",
       "updated_at": "2026-10-01T00:00:00+07:00"
     },
     {
       "service_id": 302,
-      "category_id": 4,
-      "title": "Tổng vệ sinh căn hộ trọn gói (dưới 90m²)",
-      "description": "Làm sạch sâu toàn bộ phòng khách, phòng ngủ, lau kính mặt trong, tẩy vết bẩn khu vực bếp và cọ rửa nhà vệ sinh.",
+      "category_id": 1,
+      "title": "Tổng vệ sinh căn hộ chuyên sâu (Deep Cleaning)",
+      "description": "Làm sạch sâu toàn diện từ trần đến sàn, khử khuẩn bề mặt, lau kính mặt trong và xử lý vết ố nhà bếp, phòng tắm.",
       "price": 450000,
       "pricing_type": "fixed",
-      "estimated_duration": 180,
+      "estimated_duration": 240,
       "is_active": true,
-      "image_url": "assets/service-cleaning.jpg",
+      "image_url": "assets/cleaning-deep.jpg",
       "created_at": "2026-06-01T00:00:00+07:00",
       "updated_at": "2026-10-01T00:00:00+07:00"
     },
     {
       "service_id": 303,
-      "category_id": 6,
+      "category_id": 2,
       "title": "Nấu bữa cơm gia đình theo buổi (3–4 món)",
-      "description": "Sơ chế nguyên liệu do gia đình chuẩn bị sẵn (hoặc nhờ mua hộ theo ghi chú), nấu 3–4 món ăn hàng ngày và dọn sạch bếp.",
+      "description": "Sơ chế thực phẩm tươi sạch, nấu 3–4 món ăn nóng hổi theo khẩu vị gia đình (canh, món mặn, món xào) và dọn rửa sạch bếp.",
       "price": 220000,
       "pricing_type": "fixed",
       "estimated_duration": 120,
       "is_active": true,
-      "image_url": "assets/service-cooking.jpg",
+      "image_url": "assets/cooking-family-meal.jpg",
       "created_at": "2026-06-01T00:00:00+07:00",
       "updated_at": "2026-10-01T00:00:00+07:00"
     },
     {
       "service_id": 304,
-      "category_id": 5,
-      "title": "Vệ sinh máy lạnh treo tường tại nhà",
-      "description": "Tháo rửa lưới lọc bụi, xịt rửa dàn lạnh và dàn nóng bằng máy bơm áp lực, thông đường ống thoát nước ngưng.",
-      "price": 150000,
+      "category_id": 2,
+      "title": "Đầu bếp gia đình theo giờ (Home Cooking & Tiệc nhỏ)",
+      "description": "Lên thực đơn dinh dưỡng theo yêu cầu, nấu các món ăn chu đáo cho gia đình hoặc tiệc ấm cúng, trình bày đẹp mắt và vệ sinh bếp.",
+      "price": 110000,
       "pricing_type": "hourly",
-      "estimated_duration": 90,
+      "estimated_duration": 180,
       "is_active": true,
-      "image_url": "assets/service-elderly.jpg",
+      "image_url": "assets/cooking-chef-prep.jpg",
       "created_at": "2026-06-01T00:00:00+07:00",
       "updated_at": "2026-10-01T00:00:00+07:00"
     },
     {
       "service_id": 305,
-      "category_id": 4,
+      "category_id": 1,
       "title": "Giặt vệ sinh bộ ghế Sofa vải hoặc Nệm ngủ",
       "description": "Hút bụi bề mặt, chà vết bẩn bằng dung dịch giặt chuyên dụng và hút khô nước bẩn cho 1 bộ ghế sofa hoặc 1 tấm nệm.",
       "price": 380000,
       "pricing_type": "fixed",
       "estimated_duration": 120,
-      "is_active": true,
-      "image_url": "assets/service-laundry.jpg",
+      "is_active": false,
+      "image_url": "assets/cleaning-detail.jpg",
       "created_at": "2026-06-01T00:00:00+07:00",
       "updated_at": "2026-10-01T00:00:00+07:00"
     },
     {
       "service_id": 306,
-      "category_id": 6,
+      "category_id": 2,
       "title": "Ủi quần áo & Sắp xếp tủ đồ theo giờ",
       "description": "Ủi phẳng quần áo công sở, trang phục gia đình và gấp xếp gọn gàng vào tủ theo phân loại của chủ nhà.",
       "price": 90000,
       "pricing_type": "hourly",
       "estimated_duration": 120,
       "is_active": false,
-      "image_url": "assets/service-baby.jpg",
+      "image_url": "assets/home-kitchen-clean.jpg",
       "created_at": "2026-06-01T00:00:00+07:00",
       "updated_at": "2026-10-01T00:00:00+07:00"
     }
@@ -399,32 +370,27 @@
     {
       "id_pro_ser": 3,
       "provider_id": 202,
-      "service_id": 302
+      "service_id": 301
     },
     {
       "id_pro_ser": 4,
       "provider_id": 202,
-      "service_id": 304
+      "service_id": 302
     },
     {
       "id_pro_ser": 5,
-      "provider_id": 202,
-      "service_id": 305
-    },
-    {
-      "id_pro_ser": 6,
-      "provider_id": 203,
-      "service_id": 301
-    },
-    {
-      "id_pro_ser": 7,
       "provider_id": 203,
       "service_id": 303
     },
     {
-      "id_pro_ser": 8,
-      "provider_id": 204,
+      "id_pro_ser": 6,
+      "provider_id": 203,
       "service_id": 304
+    },
+    {
+      "id_pro_ser": 7,
+      "provider_id": 204,
+      "service_id": 301
     }
   ],
   "provider_areas": [
@@ -607,6 +573,25 @@
   ],
   "bookings": [
     {
+      "booking_id": 1045,
+      "customer_id": 101,
+      "provider_id": 201,
+      "dispatch_type": "direct",
+      "service_id": 301,
+      "scheduled_time": "2026-10-24T14:48:36.776Z",
+      "status": "confirmed",
+      "address": "KTX Khu A ĐHQG, Tạ Quang Bửu, Phường Linh Trung",
+      "ward_id": "27403",
+      "latitude": 10.728912,
+      "longitude": 106.712405,
+      "total_amount": 170000,
+      "total_incidental": 0,
+      "notes": "[BROADCAST_POOL] Đơn broadcast gửi tới toàn bộ thợ",
+      "payment_status": "unpaid",
+      "created_at": "2026-10-24T14:48:36.776Z",
+      "updated_at": "2026-10-24T14:48:36.784Z"
+    },
+    {
       "booking_id": 1042,
       "customer_id": 101,
       "provider_id": 201,
@@ -752,6 +737,24 @@
     }
   ],
   "booking_status_history": [
+    {
+      "history_id": 5008,
+      "booking_id": 1045,
+      "previous_status": "pending",
+      "new_status": "confirmed",
+      "changed_by": 4,
+      "reason": "Đối tác đã nhận việc từ Hòm thư việc làm",
+      "created_at": "2026-10-24T14:48:36.784Z"
+    },
+    {
+      "history_id": 5007,
+      "booking_id": 1045,
+      "previous_status": null,
+      "new_status": "pending",
+      "changed_by": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      "reason": "Khách hàng tạo đơn đặt lịch qua Booking Wizard 1.2",
+      "created_at": "2026-10-24T14:48:36.776Z"
+    },
     {
       "history_id": 5001,
       "booking_id": 1042,

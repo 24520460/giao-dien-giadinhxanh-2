@@ -49,6 +49,11 @@ window.GDXApp = (() => {
     adminDispatchFilter: 'all',
     selectedServiceId: 301,
     selectedProviderId: 201,
+    wizardProviderMode: 'broadcast', // 'broadcast' (rải đơn cho tất cả thợ khả dụng) | 'direct' (tự chọn thợ)
+    wizardCategory: '1', // '1' (Home Cleaning) | '2' (Home Cooking)
+    inboxTab: 'available', // 'available' (Hộp thư đến) | 'expired' (Đơn đã hết hạn)
+    expiredJobIds: [],
+    dismissedJobIds: [],
     selectedBookingId: 1042,
     bookingHours: 3,
     liveTimerSeconds: 1 * 3600 + 45 * 60 + 22,
@@ -59,13 +64,13 @@ window.GDXApp = (() => {
     wizardDraft: {
       service_id: 301,
       scheduled_time: '2026-10-25T08:30',
-      provinceId: '79',
-      ward_id: '27403',
-      address: 'Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng',
-      latitude: 10.728912,
-      longitude: 106.712405,
+      provinceId: null,
+      ward_id: null,
+      address: '',
+      latitude: null,
+      longitude: null,
       provider_id: 201,
-      notes: 'Lau dọn kỹ khu vực phòng khách, ban công và gian bếp tầng trệt.',
+      notes: 'Nhà có trẻ nhỏ, vui lòng gọi điện trước 10 phút khi đến sảnh căn hộ.',
       hours: 3,
     },
     backend: {
@@ -121,6 +126,12 @@ window.GDXApp = (() => {
     },
     lock() {
       return `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+    },
+    eye() {
+      return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    },
+    eyeOff() {
+      return `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
     }
   };
 
@@ -305,7 +316,37 @@ window.GDXApp = (() => {
       tables.forEach((t) => {
         if (Array.isArray(remote[t])) {
           if (t === 'service_categories') {
-            db[t] = remote[t].map((c) => ({ ...c, name: c.category_name || c.name }));
+            db[t] = remote[t]
+              .filter((c) => {
+                const n = (c.category_name || c.name || '').toLowerCase();
+                const slug = (c.slug || '').toLowerCase();
+                return !n.includes('repair') && !n.includes('sửa') && !slug.includes('repair') && !n.includes('archived');
+              })
+              .map((c) => ({ ...c, name: c.category_name || c.name }));
+          } else if (t === 'services') {
+            db[t] = remote[t]
+              .filter((s) => {
+                const title = (s.title || '').toLowerCase();
+                return !title.includes('repair') && !title.includes('sửa') && !title.includes('appliance');
+              })
+              .map((s) => {
+                const title = (s.title || '').toLowerCase();
+                let img = s.image_url;
+                if (!img) {
+                  if (title.includes('nấu') || title.includes('cơm')) img = 'assets/cooking-family-meal.jpg';
+                  else if (title.includes('đầu bếp') || title.includes('tiệc')) img = 'assets/cooking-chef-prep.jpg';
+                  else if (title.includes('deep') || title.includes('sâu') || title.includes('tổng vệ sinh')) img = 'assets/cleaning-deep.jpg';
+                  else img = 'assets/cleaning-livingroom.jpg';
+                }
+                return { ...s, image_url: img };
+              });
+          } else if (t === 'bookings') {
+            db[t] = remote[t].map((b) => {
+              if (b.notes && b.notes.includes('[BROADCAST_POOL]') && b.status === 'pending') {
+                return { ...b, provider_id: null, dispatch_type: 'broadcast' };
+              }
+              return b;
+            });
           } else {
             db[t] = remote[t];
           }
@@ -340,8 +381,14 @@ window.GDXApp = (() => {
             state.currentUser = found || savedUser;
             state.activeUserId = (found || savedUser).user_id;
             state.userRole = (found || savedUser).role;
-            const cp = (db.customer_profiles || []).find((c) => c.user_id === state.activeUserId);
-            if (cp) state.activeCustomerId = cp.customer_id;
+            const cp = (db.customer_profiles || []).find((c) => String(c.user_id) === String(state.activeUserId));
+            if (cp) {
+              state.activeCustomerId = cp.customer_id;
+              state.wizardDraft.ward_id = cp.ward_id;
+              state.wizardDraft.address = cp.default_address;
+              state.wizardDraft.latitude = cp.latitude;
+              state.wizardDraft.longitude = cp.longitude;
+            }
             const pp = (db.provider_profiles || []).find((p) => p.user_id === state.activeUserId);
             if (pp) state.activeProviderId = pp.provider_id;
           }
@@ -550,7 +597,7 @@ window.GDXApp = (() => {
     '1.5': { id: '1.5', portal: 1, title: '1.5. Hồ sơ cá nhân & Sổ địa chỉ', type: 'page', table: 'users, customer_profiles, ward' },
     '1.6': { id: '1.6', portal: 1, title: '1.6. Danh sách Dịch vụ yêu thích', type: 'page', table: 'favorites, services' },
     '1.7': { id: '1.7', portal: 1, title: '1.7. Hồ sơ công khai của Thợ', type: 'modal', table: 'provider_public_profiles, reviews, provider_services' },
-    '1.8': { id: '1.8', portal: 1, title: '1.8. Cổng Thanh toán hóa đơn (Checkout)', type: 'modal', table: 'bookings (total_amount, payment_status)' },
+    '1.8': { id: '1.8', portal: 1, title: '1.8. Cổng Thanh toán QR Chuyển khoản (VietQR)', type: 'page', table: 'bookings (total_amount, payment_status)' },
     '1.9': { id: '1.9', portal: 1, title: '1.9. Đánh giá & Chấm điểm Thợ', type: 'modal', table: 'reviews, bookings' },
     '1.10': { id: '1.10', portal: 1, title: '1.10. Xác nhận Hủy lịch hẹn', type: 'modal', table: 'bookings, booking_status_history' },
     '1.11': { id: '1.11', portal: 1, title: '1.11. Trung tâm Hỗ trợ & Gửi khiếu nại', type: 'drawer', table: 'support_tickets, bookings' },
@@ -1082,6 +1129,7 @@ window.GDXApp = (() => {
       case '1.4': renderScreen_1_4(viewport, params); break;
       case '1.5': renderScreen_1_5(viewport, params); break;
       case '1.6': renderScreen_1_6(viewport, params); break;
+      case '1.8': renderScreen_1_8(viewport, params); break;
 
       case '2.1': renderScreen_2_1(viewport, params); break;
       case '2.2': renderScreen_2_2(viewport, params); break;
@@ -1152,209 +1200,105 @@ window.GDXApp = (() => {
   // SCREEN RENDERERS: PHÂN HỆ 0 (AUTH & ONBOARDING: 0.1 – 0.5)
   // =====================================================================
 
-  // 0.1: Đăng nhập / Đăng ký / Khôi phục mật khẩu
-  function renderScreen_0_1(container) {
-    if (state.isProduction || state.viewMode === 'production') {
-      container.innerHTML = `
-        <div class="screen-header" style="justify-content:center; text-align:center; border-bottom:none; margin-bottom:20px;">
-          <div>
-            <h1 class="screen-title">Đăng nhập &amp; Đăng ký tài khoản</h1>
-            <p class="field-hint" style="max-width:440px; margin:4px auto 0;">Chào mừng bạn đến với Gia Đình Xanh · Nền tảng dịch vụ chăm sóc gia đình</p>
-          </div>
+  // 0.1: Đăng nhập (Chính) / Đăng ký riêng biệt / Khôi phục mật khẩu riêng biệt
+  function renderScreen_0_1(container, params = {}) {
+    const currentView = (params && params.view) || state.authView || 'login';
+    state.authView = currentView;
+
+    const isDev = !state.isProduction && state.viewMode === 'dev';
+
+    let rightFormHtml = '';
+
+    if (currentView === 'login') {
+      rightFormHtml = `
+        <div class="auth-form-header">
+          <span class="auth-badge-pill">Đăng nhập tài khoản</span>
+          <h2 class="auth-form-title">Chào mừng bạn trở lại</h2>
+          <p class="auth-form-subtitle">Nhập số điện thoại hoặc email đã đăng ký để tiếp tục vào hệ thống.</p>
         </div>
 
-        <div style="max-width:480px; margin:0 auto;">
-          <div class="panel">
-            <div class="underline-tabs" id="authTabs">
-              <button type="button" class="u-tab" aria-selected="true" onclick="GDXApp.setAuthTab('login')">Đăng nhập</button>
-              <button type="button" class="u-tab" aria-selected="false" onclick="GDXApp.setAuthTab('register')">Đăng ký tài khoản</button>
-              <button type="button" class="u-tab" aria-selected="false" onclick="GDXApp.setAuthTab('forgot')">Khôi phục mật khẩu</button>
-            </div>
-
-            <div id="authTabContent">
-              <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleLogin(this);">
-                <div class="field-group">
-                  <label class="field-label" for="loginIdentifier">Số điện thoại hoặc Email</label>
-                  <span id="loginIdHint" class="field-hint">Nhập số điện thoại 10 chữ số hoặc địa chỉ email đã đăng ký</span>
-                  <input type="text" id="loginIdentifier" name="identifier" class="input" placeholder="09xxxxxxxx hoặc email@domain.com" required autocomplete="username" aria-describedby="loginIdHint">
-                  <div class="error-msg">Vui lòng nhập số điện thoại hoặc email hợp lệ.</div>
-                </div>
-                <div class="field-group">
-                  <label class="field-label" for="loginPassword">Mật khẩu</label>
-                  <input type="password" id="loginPassword" name="password" class="input" placeholder="Nhập mật khẩu của bạn" required minlength="6" autocomplete="current-password">
-                  <div class="error-msg">Mật khẩu cần tối thiểu 6 ký tự.</div>
-                </div>
-                <button type="submit" class="btn btn-primary" style="width:100%; height:42px; margin-top:8px;">
-                  Đăng nhập vào hệ thống &rarr;
-                </button>
-              </form>
-            </div>
+        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleLogin(this);">
+          <div class="field-group">
+            <label class="field-label" for="loginIdentifier">Số điện thoại hoặc Email</label>
+            <input type="text" id="loginIdentifier" name="identifier" class="input" placeholder="09xxxxxxxx hoặc email@domain.com" required autocomplete="username">
+            <div class="error-msg">Vui lòng nhập số điện thoại hoặc email hợp lệ.</div>
           </div>
+
+          <div class="field-group">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label class="field-label" for="loginPassword" style="margin-bottom:0;">Mật khẩu</label>
+              <a href="javascript:void(0)" onclick="GDXApp.setAuthView('forgot')" class="auth-text-link" style="font-size:13px;">Quên mật khẩu?</a>
+            </div>
+            <div class="pw-input-wrap">
+              <input type="password" id="loginPassword" name="password" class="input" placeholder="Nhập mật khẩu của bạn" required minlength="6" autocomplete="current-password">
+              <button type="button" class="btn-toggle-pw" onclick="GDXApp.togglePasswordVisibility('loginPassword', this)" aria-label="Hiển thị mật khẩu">
+                ${Icons.eye()}
+              </button>
+            </div>
+            <div class="error-msg">Mật khẩu cần tối thiểu 6 ký tự.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-auth-submit">
+            Đăng nhập vào hệ thống &rarr;
+          </button>
+        </form>
+
+        <div class="auth-switch-footer">
+          <span>Bạn chưa có tài khoản?</span>
+          <a href="javascript:void(0)" onclick="GDXApp.setAuthView('register')" class="auth-switch-cta">Đăng ký ngay &rarr;</a>
         </div>
       `;
-      applyUserModeCleanups(container, '0.1');
-      return;
-    }
-
-    container.innerHTML = `
-      <div class="screen-header">
-        <div>
-          <h1 class="screen-title">0.1. Cổng xác thực tài khoản &amp; Phân luồng vai trò</h1>
-          <p class="screen-finding">Bảng liên quan: auth.users, public.users. Cấp auth.uid() phục vụ toàn bộ các hàm RLS.</p>
-        </div>
-      </div>
-
-      <div class="grid-12">
-        <!-- Left: Quick Role Experience Switcher Cards -->
-        <div class="col-6">
-          <div class="panel form-stack">
-            <div class="panel-header" style="margin-bottom:4px;">
-              <h2 class="panel-title">Chọn nhanh tài khoản trải nghiệm</h2>
-              <span class="badge badge-info">5 trạng thái thực tế</span>
-            </div>
-            <p class="field-hint">
-              Bấm vào bất kỳ tài khoản nào bên dưới để đăng nhập ngay với vai trò tương ứng trên hệ thống:
-            </p>
-
-            <div class="form-stack" style="gap:10px;">
-              <button type="button" class="choice-card" style="width:100%; align-items:center; justify-content:space-between;" onclick="GDXApp.quickPersonaLogin('customer')">
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <div style="width:40px; height:40px; border-radius:50%; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; font-weight:600;">MT</div>
-                  <div>
-                    <div style="font-weight:600; font-size:14.5px;">Nguyễn Minh Thảo · Khách hàng</div>
-                    <div class="field-hint">0908341289 · Phú Mỹ Hưng, Quận 7 · Có đơn #1042 đang chạy</div>
-                  </div>
-                </div>
-                <span class="badge badge-positive">Vào trang Khách &rarr;</span>
-              </button>
-
-              <button type="button" class="choice-card" style="width:100%; align-items:center; justify-content:space-between;" onclick="GDXApp.quickPersonaLogin('provider')">
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <img src="assets/provider-lan.jpg" alt="Đặng Thị Mai Lan" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
-                  <div>
-                    <div style="font-weight:600; font-size:14.5px;">Đặng Thị Mai Lan · Đối tác Thợ</div>
-                    <div class="field-hint">0938772190 · Đã xác minh CCCD · 4.95 sao (42 đánh giá)</div>
-                  </div>
-                </div>
-                <span class="badge badge-positive">Vào trang Thợ &rarr;</span>
-              </button>
-
-              <button type="button" class="choice-card" style="width:100%; align-items:center; justify-content:space-between;" onclick="GDXApp.quickPersonaLogin('admin')">
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <div style="width:40px; height:40px; border-radius:50%; background:var(--pill-info-bg); color:var(--pill-info-ink); display:grid; place-items:center; font-weight:600;">QH</div>
-                  <div>
-                    <div style="font-weight:600; font-size:14.5px;">Nguyễn Quang Hào · Quản trị viên</div>
-                    <div class="field-hint">0901999888 · Điều phối đơn hàng, duyệt KYC &amp; quản lý biểu giá</div>
-                  </div>
-                </div>
-                <span class="badge badge-info">Vào trang Admin &rarr;</span>
-              </button>
-
-              <button type="button" class="choice-card" style="width:100%; align-items:center; justify-content:space-between;" onclick="GDXApp.quickPersonaLogin('provider_pending')">
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <img src="assets/provider-mai.jpg" alt="Võ Văn Khải" style="width:40px; height:40px; border-radius:50%; object-fit:cover;">
-                  <div>
-                    <div style="font-weight:600; font-size:14.5px;">Võ Văn Khải · Thợ mới nộp hồ sơ</div>
-                    <div class="field-hint">0903667124 · Hồ sơ đang chờ Quản trị viên xét duyệt</div>
-                  </div>
-                </div>
-                <span class="badge badge-warning">Xem trạng thái 0.4</span>
-              </button>
-
-              <button type="button" class="choice-card" style="width:100%; align-items:center; justify-content:space-between;" onclick="GDXApp.quickPersonaLogin('provider_rejected')">
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <div style="width:40px; height:40px; border-radius:50%; background:var(--pill-negative-bg); color:var(--pill-negative-ink); display:grid; place-items:center; font-weight:600;">MĐ</div>
-                  <div>
-                    <div style="font-weight:600; font-size:14.5px;">Ngô Minh Đức · Tài khoản tạm khóa</div>
-                    <div class="field-hint">0966509311 · Minh họa màn hình chặn truy cập khi bị khóa</div>
-                  </div>
-                </div>
-                <span class="badge badge-negative">Xem màn khóa 0.5</span>
-              </button>
-            </div>
-          </div>
+    } else if (currentView === 'register') {
+      rightFormHtml = `
+        <div class="auth-form-header">
+          <span class="auth-badge-pill">Đăng ký thành viên</span>
+          <h2 class="auth-form-title">Tạo tài khoản mới</h2>
+          <p class="auth-form-subtitle">Chỉ mất chưa đầy 1 phút để bắt đầu sử dụng dịch vụ tiện ích gia đình.</p>
         </div>
 
-        <!-- Right: Standard Tabbed Auth Form -->
-        <div class="col-6">
-          <div class="panel">
-            <div class="underline-tabs" id="authTabs">
-              <button type="button" class="u-tab" aria-selected="true" onclick="GDXApp.setAuthTab('login')">Đăng nhập</button>
-              <button type="button" class="u-tab" aria-selected="false" onclick="GDXApp.setAuthTab('register')">Đăng ký tài khoản</button>
-              <button type="button" class="u-tab" aria-selected="false" onclick="GDXApp.setAuthTab('forgot')">Khôi phục mật khẩu</button>
-            </div>
-
-            <div id="authTabContent">
-              <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleLogin(this);">
-                <div class="field-group">
-                  <label class="field-label" for="loginIdentifier">Số điện thoại hoặc Email (users.phone_number)</label>
-                  <span id="loginIdHint" class="field-hint">Nhập số điện thoại 10 chữ số hoặc địa chỉ email đã đăng ký</span>
-                  <input type="text" id="loginIdentifier" name="identifier" class="input" value="0908341289" required autocomplete="username" aria-describedby="loginIdHint">
-                  <div class="error-msg">Vui lòng nhập số điện thoại hoặc email hợp lệ.</div>
-                </div>
-                <div class="field-group">
-                  <label class="field-label" for="loginPassword">Mật khẩu (auth.users.encrypted_password)</label>
-                  <input type="password" id="loginPassword" name="password" class="input" value="••••••••" required minlength="6" autocomplete="current-password">
-                  <div class="error-msg">Mật khẩu cần tối thiểu 6 ký tự.</div>
-                </div>
-                <div class="field-group">
-                  <label class="field-label" for="loginRoleSelect">Vai trò đăng nhập</label>
-                  <select id="loginRoleSelect" name="mockRole" class="select">
-                    <option value="customer" selected>Khách hàng: Nguyễn Minh Thảo (Quận 7)</option>
-                    <option value="provider">Đối tác Thợ: Đặng Thị Mai Lan (Đã xác minh)</option>
-                    <option value="provider_pending">Đối tác Thợ: Võ Văn Khải (Đang chờ duyệt)</option>
-                    <option value="provider_rejected">Tài khoản: Ngô Minh Đức (Đang tạm khóa)</option>
-                    <option value="admin">Quản trị viên: Nguyễn Quang Hào</option>
-                  </select>
-                </div>
-                <button type="submit" class="btn btn-primary" style="width:100%; height:42px; margin-top:4px;">
-                  Đăng nhập vào hệ thống &rarr;
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function quickPersonaLogin(role) {
-    handleLogin({ mockRole: { value: role } });
-  }
-
-  function setAuthTab(tab) {
-    const content = document.getElementById('authTabContent');
-    if (!content) return;
-    const tabs = document.querySelectorAll('#authTabs .u-tab');
-    tabs.forEach((t, i) => {
-      t.setAttribute('aria-selected', (tab === 'login' && i === 0) || (tab === 'register' && i === 1) || (tab === 'forgot' && i === 2));
-    });
-
-    if (tab === 'login') {
-      renderScreen_0_1(document.getElementById('mainViewport'));
-      applyUserModeCleanups(document.getElementById('mainViewport'), '0.1');
-    } else if (tab === 'register') {
-      content.innerHTML = `
         <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleRegister(this);">
           <div class="field-group">
-            <label class="field-label" for="regFullName">Họ và tên đầy đủ (users.full_name)</label>
-            <input type="text" id="regFullName" name="full_name" class="input" required placeholder="Nguyễn Văn An" autocomplete="name">
+            <label class="field-label" for="regFullName">Họ và tên đầy đủ</label>
+            <input type="text" id="regFullName" name="full_name" class="input" required placeholder="Ví dụ: Nguyễn Văn An" autocomplete="name">
             <div class="error-msg">Vui lòng nhập họ và tên của bạn.</div>
           </div>
+
           <div class="form-row-2">
             <div class="field-group">
-              <label class="field-label" for="regPhone">Số điện thoại (users.phone_number)</label>
-              <span id="regPhoneHint" class="field-hint">Định dạng 10 số: 09xxxxxxxx</span>
-              <input type="tel" id="regPhone" name="phone_number" class="input" required pattern="0[0-9]{9,10}" placeholder="0918776655" autocomplete="tel" aria-describedby="regPhoneHint">
-              <div class="error-msg">Số điện thoại gồm 10 chữ số bắt đầu bằng số 0.</div>
+              <label class="field-label" for="regPhone">Số điện thoại</label>
+              <input type="tel" id="regPhone" name="phone_number" class="input" required pattern="0[0-9]{9,10}" placeholder="0918776655" autocomplete="tel">
+              <div class="error-msg">Số điện thoại gồm 10 số bắt đầu bằng số 0.</div>
             </div>
             <div class="field-group">
-              <label class="field-label" for="regEmail">Địa chỉ Email (auth.users)</label>
-              <span id="regEmailHint" class="field-hint">Ví dụ: ban@email.com</span>
-              <input type="email" id="regEmail" name="email" class="input" required placeholder="lananh@gmail.com" autocomplete="email" aria-describedby="regEmailHint">
+              <label class="field-label" for="regEmail">Địa chỉ Email</label>
+              <input type="email" id="regEmail" name="email" class="input" required placeholder="ban@email.com" autocomplete="email">
               <div class="error-msg">Vui lòng nhập đúng định dạng email.</div>
             </div>
           </div>
+
+          <div class="form-row-2">
+            <div class="field-group">
+              <label class="field-label" for="regPassword">Mật khẩu</label>
+              <div class="pw-input-wrap">
+                <input type="password" id="regPassword" name="password" class="input" required minlength="6" placeholder="Tối thiểu 6 ký tự" autocomplete="new-password">
+                <button type="button" class="btn-toggle-pw" onclick="GDXApp.togglePasswordVisibility('regPassword', this)" aria-label="Hiển thị mật khẩu">
+                  ${Icons.eye()}
+                </button>
+              </div>
+              <span class="field-hint">Tối thiểu 6 ký tự bảo mật</span>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="regConfirmPassword">Xác nhận mật khẩu</label>
+              <div class="pw-input-wrap">
+                <input type="password" id="regConfirmPassword" name="confirm_password" class="input" required minlength="6" placeholder="Nhập lại mật khẩu" autocomplete="new-password">
+                <button type="button" class="btn-toggle-pw" onclick="GDXApp.togglePasswordVisibility('regConfirmPassword', this)" aria-label="Hiển thị mật khẩu">
+                  ${Icons.eye()}
+                </button>
+              </div>
+              <span class="field-hint">Nhập lại chính xác mật khẩu</span>
+            </div>
+          </div>
+
           <div class="field-group">
             <label class="field-label">Bạn đăng ký với mục đích nào?</label>
             <div class="choice-grid-2">
@@ -1362,7 +1306,7 @@ window.GDXApp = (() => {
                 <input type="radio" name="role" value="customer" checked>
                 <div>
                   <div style="font-weight:600;">Khách hàng gia đình</div>
-                  <div class="field-hint">Đặt lịch dọn nhà, vệ sinh máy lạnh, nấu ăn</div>
+                  <div class="field-hint">Đặt lịch dọn nhà, điện lạnh, nấu ăn</div>
                 </div>
               </label>
               <label class="choice-card">
@@ -1374,96 +1318,290 @@ window.GDXApp = (() => {
               </label>
             </div>
           </div>
-          <button type="submit" class="btn btn-primary" style="width:100%; height:42px;">
+
+          <button type="submit" class="btn btn-primary btn-auth-submit">
             Tạo tài khoản &amp; Tiếp tục thiết lập hồ sơ &rarr;
           </button>
         </form>
+
+        <div class="auth-switch-footer">
+          <span>Bạn đã có tài khoản?</span>
+          <a href="javascript:void(0)" onclick="GDXApp.setAuthView('login')" class="auth-switch-cta">Đăng nhập ngay &rarr;</a>
+        </div>
       `;
-      applyUserModeCleanups(content, '0.1');
     } else {
-      content.innerHTML = `
-        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.showToast('Đã gửi hướng dẫn đặt lại mật khẩu qua Email'); GDXApp.setAuthTab('login');">
+      rightFormHtml = `
+        <div class="auth-form-header">
+          <span class="auth-badge-pill">Khôi phục quyền truy cập</span>
+          <h2 class="auth-form-title">Quên mật khẩu?</h2>
+          <p class="auth-form-subtitle">Đừng lo lắng! Vui lòng cung cấp email hoặc số điện thoại đã đăng ký, chúng tôi sẽ hỗ trợ bạn ngay.</p>
+        </div>
+
+        <div class="auth-info-banner">
+          <span style="font-size:18px; line-height:1;">${Icons.shield()}</span>
+          <div>Liên kết đặt lại mật khẩu an toàn sẽ được gửi trực tiếp đến hòm thư hoặc số điện thoại của bạn trong 60 giây.</div>
+        </div>
+
+        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleForgot(this);">
           <div class="field-group">
-            <label class="field-label" for="forgotEmail">Địa chỉ Email đã đăng ký</label>
-            <span id="forgotHint" class="field-hint">Hệ thống sẽ gửi liên kết đặt lại mật khẩu vào hộp thư của bạn</span>
-            <input type="email" id="forgotEmail" class="input" required placeholder="minhthao.q7@gmail.com" autocomplete="email" aria-describedby="forgotHint">
-            <div class="error-msg">Vui lòng nhập địa chỉ email hợp lệ.</div>
+            <label class="field-label" for="forgotIdentifier">Email hoặc Số điện thoại đã đăng ký</label>
+            <input type="text" id="forgotIdentifier" name="identifier" class="input" required placeholder="minhthao.q7@gmail.com hoặc 09xxxxxxxx" autocomplete="username">
+            <div class="error-msg">Vui lòng nhập email hoặc số điện thoại hợp lệ.</div>
           </div>
-          <button type="submit" class="btn btn-primary" style="width:100%; height:42px;">
-            Gửi hướng dẫn khôi phục mật khẩu
+
+          <button type="submit" class="btn btn-primary btn-auth-submit">
+            Gửi hướng dẫn khôi phục mật khẩu &rarr;
           </button>
         </form>
+
+        <div class="auth-switch-footer">
+          <a href="javascript:void(0)" onclick="GDXApp.setAuthView('login')" class="auth-back-cta">&larr; Quay lại trang Đăng nhập</a>
+        </div>
       `;
+    }
+
+    container.innerHTML = `
+      <div class="auth-stage-wrapper">
+        ${isDev ? `
+          <div class="auth-dev-banner">
+            <div class="auth-dev-banner-header">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge badge-info">Chế độ Phát triển</span>
+                <strong style="font-size:13.5px; color:var(--ink);">Chọn nhanh tài khoản để trải nghiệm 5 vai trò hệ thống (1-Click Login):</strong>
+              </div>
+              <span class="field-hint">Chỉ hiển thị ở góc nhìn Dev</span>
+            </div>
+            <div class="auth-dev-persona-grid">
+              <button type="button" class="auth-dev-chip" onclick="GDXApp.quickPersonaLogin('customer')">
+                <div style="width:28px; height:28px; border-radius:50%; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; font-weight:600; font-size:12px;">MT</div>
+                <div>
+                  <div style="font-weight:600; font-size:13px;">Nguyễn Minh Thảo</div>
+                  <div class="field-hint" style="font-size:11px;">Khách hàng · Q.7</div>
+                </div>
+              </button>
+              <button type="button" class="auth-dev-chip" onclick="GDXApp.quickPersonaLogin('provider')">
+                <img src="assets/provider-lan.jpg" alt="Mai Lan" style="width:28px; height:28px; border-radius:50%; object-fit:cover;">
+                <div>
+                  <div style="font-weight:600; font-size:13px;">Đặng Thị Mai Lan</div>
+                  <div class="field-hint" style="font-size:11px;">Thợ đã duyệt (4.95★)</div>
+                </div>
+              </button>
+              <button type="button" class="auth-dev-chip" onclick="GDXApp.quickPersonaLogin('provider_pending')">
+                <img src="assets/provider-mai.jpg" alt="Võ Văn Khải" style="width:28px; height:28px; border-radius:50%; object-fit:cover;">
+                <div>
+                  <div style="font-weight:600; font-size:13px;">Võ Văn Khải</div>
+                  <div class="field-hint" style="font-size:11px;">Thợ chờ duyệt (0.4)</div>
+                </div>
+              </button>
+              <button type="button" class="auth-dev-chip" onclick="GDXApp.quickPersonaLogin('provider_rejected')">
+                <div style="width:28px; height:28px; border-radius:50%; background:var(--pill-negative-bg); color:var(--pill-negative-ink); display:grid; place-items:center; font-weight:600; font-size:12px;">MĐ</div>
+                <div>
+                  <div style="font-weight:600; font-size:13px;">Ngô Minh Đức</div>
+                  <div class="field-hint" style="font-size:11px;">Tài khoản tạm khóa</div>
+                </div>
+              </button>
+              <button type="button" class="auth-dev-chip" onclick="GDXApp.quickPersonaLogin('admin')">
+                <div style="width:28px; height:28px; border-radius:50%; background:var(--pill-info-bg); color:var(--pill-info-ink); display:grid; place-items:center; font-weight:600; font-size:12px;">QH</div>
+                <div>
+                  <div style="font-weight:600; font-size:13px;">Nguyễn Quang Hào</div>
+                  <div class="field-hint" style="font-size:11px;">Quản trị viên (3.1)</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="auth-split-card">
+          <!-- Left: Brand Showcase & Trust Pillars -->
+          <div class="auth-brand-side">
+            <div>
+              <div class="auth-brand-badge">
+                ${Icons.shield()} Nền tảng Đặt Dịch Vụ Gia Đình
+              </div>
+              <h2 class="auth-brand-title">Chăm sóc ngôi nhà, nâng niu tổ ấm Việt.</h2>
+              <p class="auth-brand-desc">
+                Gia Đình Xanh kết nối trực tiếp các hộ gia đình với mạng lưới đối tác thợ lành nghề, được xác minh danh tính và chuẩn hóa tác phong phục vụ.
+              </p>
+
+              <div class="auth-trust-list">
+                <div class="auth-trust-item">
+                  <div class="auth-trust-icon">${Icons.check()}</div>
+                  <div>
+                    <h4>Đối tác xác minh lý lịch rõ ràng</h4>
+                    <p>Kiểm tra CCCD gắn chip, xác thực tư pháp và tay nghề trước khi nhận việc.</p>
+                  </div>
+                </div>
+
+                <div class="auth-trust-item">
+                  <div class="auth-trust-icon">${Icons.check()}</div>
+                  <div>
+                    <h4>Bảo hiểm trách nhiệm minh bạch</h4>
+                    <p>An tâm tuyệt đối với gói bảo hiểm tài sản lên đến 20.000.000đ trong suốt ca dịch vụ.</p>
+                  </div>
+                </div>
+
+                <div class="auth-trust-item">
+                  <div class="auth-trust-icon">${Icons.check()}</div>
+                  <div>
+                    <h4>Biểu giá niêm yết theo thời gian thực</h4>
+                    <p>Báo giá rõ ràng, không phụ phí phát sinh, dễ dàng thanh toán linh hoạt.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="auth-brand-footer">
+              <span>Được tin dùng bởi hơn 10.000+ hộ gia đình</span>
+              <span style="display:flex; align-items:center; gap:4px; font-weight:600; color:#a7f3d0;">
+                ★ 4.95 / 5.0
+              </span>
+            </div>
+          </div>
+
+          <!-- Right: Dedicated Form Surface (Login / Register / Forgot) -->
+          <div class="auth-form-side">
+            ${rightFormHtml}
+          </div>
+        </div>
+      </div>
+    `;
+
+    applyUserModeCleanups(container, '0.1');
+  }
+
+  function setAuthView(view = 'login') {
+    state.authView = view;
+    const vp = document.getElementById('mainViewport');
+    if (vp) {
+      renderScreen_0_1(vp, { view });
     }
   }
 
-  function handleLogin(form) {
-    if (state.isProduction || state.viewMode === 'production') {
-      const identifier = form.identifier ? form.identifier.value.trim() : '';
-      if (!identifier) {
-        showToast('Vui lòng nhập số điện thoại hoặc email.');
-        return;
-      }
-      const db = window.GDX_DB;
-      const found = (db.users || []).find((u) => u.phone_number === identifier || u.email === identifier);
-      if (found) {
-        state.currentUser = found;
-        state.activeUserId = found.user_id;
-        state.userRole = found.role;
-        const cp = (db.customer_profiles || []).find((c) => c.user_id === found.user_id);
-        if (cp) state.activeCustomerId = cp.customer_id;
-        const pp = (db.provider_profiles || []).find((p) => p.user_id === found.user_id);
-        if (pp) state.activeProviderId = pp.provider_id;
-        try {
-          localStorage.setItem('gdx_auth_user', JSON.stringify(found));
-        } catch (_) {}
-        showToast(`Đăng nhập thành công: ${found.full_name}`);
-        renderUserTopbar();
-        if (found.role === 'provider') {
-          switchPortal(2, '2.1');
-        } else if (found.role === 'admin') {
-          switchPortal(3, '3.1');
-        } else {
-          switchPortal(1, '1.1');
-        }
-        return;
-      } else {
-        const tempUser = {
-          user_id: 'prod-user-' + Date.now(),
-          full_name: identifier.includes('@') ? identifier.split('@')[0] : 'Khách hàng ' + identifier.slice(-4),
-          phone_number: identifier.includes('@') ? '0901234567' : identifier,
-          email: identifier.includes('@') ? identifier : `${identifier}@giadinhxanh.vn`,
-          role: 'customer'
-        };
-        state.currentUser = tempUser;
-        state.activeUserId = tempUser.user_id;
-        state.userRole = 'customer';
-        try {
-          localStorage.setItem('gdx_auth_user', JSON.stringify(tempUser));
-        } catch (_) {}
-        showToast(`Đăng nhập thành công: ${tempUser.full_name}`);
-        renderUserTopbar();
+  function setAuthTab(tab) {
+    const view = tab === 'forgot' ? 'forgot' : (tab === 'register' ? 'register' : 'login');
+    setAuthView(view);
+  }
+
+  function handleForgot(form) {
+    const identifier = form && form.identifier ? form.identifier.value.trim() : '';
+    if (!identifier) {
+      showToast('Vui lòng nhập email hoặc số điện thoại đã đăng ký.');
+      return;
+    }
+    showToast(`Đã gửi hướng dẫn khôi phục mật khẩu tới: ${identifier}. Vui lòng kiểm tra hộp thư/tin nhắn.`);
+    setTimeout(() => {
+      setAuthView('login');
+    }, 1200);
+  }
+
+  function togglePasswordVisibility(inputId, btnEl) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const isPw = input.type === 'password';
+    input.type = isPw ? 'text' : 'password';
+    if (btnEl) {
+      btnEl.setAttribute('aria-label', isPw ? 'Ẩn mật khẩu' : 'Hiển thị mật khẩu');
+      btnEl.innerHTML = isPw ? Icons.eyeOff() : Icons.eye();
+    }
+  }
+
+  function quickPersonaLogin(role) {
+    handleLogin({ mockRole: { value: role } });
+  }
+
+  async function handleLogin(form) {
+    const hasIdentifier = Boolean(form && form.identifier && form.identifier.value && form.identifier.value.trim());
+    const hasPassword = Boolean(form && form.password && form.password.value);
+
+    // Cho phép trải nghiệm nhanh persona ở chế độ phát triển nếu không nhập thủ công
+    if (!hasIdentifier && form && form.mockRole && !state.isProduction && state.viewMode !== 'production') {
+      const role = form.mockRole.value || 'customer';
+      if (role === 'customer') {
+        showToast('Đã đăng nhập: Nguyễn Minh Thảo (Khách hàng)');
         switchPortal(1, '1.1');
-        return;
+      } else if (role === 'provider') {
+        showToast('Đã đăng nhập: Đặng Thị Mai Lan (Đối tác Thợ)');
+        switchPortal(2, '2.1');
+      } else if (role === 'provider_pending') {
+        showToast('Tài khoản thợ Võ Văn Khải đang chờ duyệt hồ sơ');
+        switchPortal(0, '0.4', { status: 'pending' });
+      } else if (role === 'provider_rejected') {
+        showToast('Tài khoản Ngô Minh Đức đang tạm khóa');
+        switchPortal(0, '0.5');
+      } else if (role === 'admin') {
+        showToast('Đã đăng nhập: Nguyễn Quang Hào (Quản trị viên)');
+        switchPortal(3, '3.1');
       }
+      return;
     }
 
-    const role = form.mockRole ? form.mockRole.value : 'customer';
-    if (role === 'customer') {
-      showToast('Đã đăng nhập: Nguyễn Minh Thảo (Khách hàng)');
-      switchPortal(1, '1.1');
-    } else if (role === 'provider') {
-      showToast('Đã đăng nhập: Đặng Thị Mai Lan (Đối tác Thợ)');
-      switchPortal(2, '2.1');
-    } else if (role === 'provider_pending') {
-      showToast('Tài khoản thợ Võ Văn Khải đang chờ duyệt hồ sơ');
-      switchPortal(0, '0.4', { status: 'pending' });
-    } else if (role === 'provider_rejected') {
-      showToast('Tài khoản Ngô Minh Đức đang tạm khóa');
-      switchPortal(0, '0.5');
-    } else if (role === 'admin') {
-      showToast('Đã đăng nhập: Nguyễn Quang Hào (Quản trị viên)');
-      switchPortal(3, '3.1');
+    const identifier = form && form.identifier ? form.identifier.value.trim() : '';
+    const password = form && form.password ? form.password.value : '';
+
+    if (!identifier) {
+      showToast('Vui lòng nhập số điện thoại hoặc email.');
+      return;
+    }
+    if (!password) {
+      showToast('Vui lòng nhập mật khẩu của bạn.');
+      return;
+    }
+
+    // Gửi yêu cầu đăng nhập lên API xác thực
+    const res = await apiRequest('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, password })
+    });
+
+    if (res && res.ok && res.user) {
+      state.currentUser = res.user;
+      state.activeUserId = res.user.user_id;
+      state.userRole = res.user.role;
+
+      if (window.GDX_DB && Array.isArray(window.GDX_DB.users)) {
+        const uIdx = window.GDX_DB.users.findIndex(u => u.user_id === res.user.user_id);
+        if (uIdx >= 0) window.GDX_DB.users[uIdx] = res.user;
+        else window.GDX_DB.users.push(res.user);
+      }
+
+      if (res.customer_profile) {
+        state.activeCustomerId = res.customer_profile.customer_id;
+        state.wizardDraft.ward_id = res.customer_profile.ward_id;
+        state.wizardDraft.address = res.customer_profile.default_address;
+        state.wizardDraft.latitude = res.customer_profile.latitude;
+        state.wizardDraft.longitude = res.customer_profile.longitude;
+        if (window.GDX_DB && Array.isArray(window.GDX_DB.customer_profiles)) {
+          const cIdx = window.GDX_DB.customer_profiles.findIndex(c => String(c.user_id) === String(res.user.user_id));
+          if (cIdx >= 0) window.GDX_DB.customer_profiles[cIdx] = res.customer_profile;
+          else window.GDX_DB.customer_profiles.push(res.customer_profile);
+        }
+      }
+
+      if (res.provider_profile) {
+        state.activeProviderId = res.provider_profile.provider_id;
+        if (window.GDX_DB && Array.isArray(window.GDX_DB.provider_profiles)) {
+          const pIdx = window.GDX_DB.provider_profiles.findIndex(p => String(p.user_id) === String(res.user.user_id));
+          if (pIdx >= 0) window.GDX_DB.provider_profiles[pIdx] = res.provider_profile;
+          else window.GDX_DB.provider_profiles.push(res.provider_profile);
+        }
+      }
+
+      try {
+        localStorage.setItem('gdx_auth_user', JSON.stringify(res.user));
+      } catch (_) {}
+
+      showToast(`Đăng nhập thành công! Chào mừng ${res.user.full_name}.`);
+      renderUserTopbar();
+
+      if (res.user.role === 'provider') {
+        switchPortal(2, '2.1');
+      } else if (res.user.role === 'admin') {
+        switchPortal(3, '3.1');
+      } else {
+        switchPortal(1, '1.1');
+      }
+    } else {
+      showToast((res && res.error) || 'Đăng nhập không thành công. Vui lòng kiểm tra lại tài khoản hoặc mật khẩu.');
     }
   }
 
@@ -1472,9 +1610,23 @@ window.GDXApp = (() => {
     const fullName = form.full_name ? form.full_name.value.trim() : '';
     const phone = form.phone_number ? form.phone_number.value.trim() : '';
     const email = form.email ? form.email.value.trim() : '';
+    const password = form.password ? form.password.value : '';
+    const confirmPassword = form.confirm_password ? form.confirm_password.value : '';
 
     if (!fullName || !phone) {
       showToast('Vui lòng nhập họ và tên cùng số điện thoại.');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      showToast('Mật khẩu là bắt buộc và phải có tối thiểu 6 ký tự.');
+      if (form.password) form.password.focus();
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showToast('Mật khẩu xác nhận không trùng khớp. Vui lòng kiểm tra lại.');
+      if (form.confirm_password) form.confirm_password.focus();
       return;
     }
 
@@ -1484,6 +1636,7 @@ window.GDXApp = (() => {
         full_name: fullName,
         phone_number: phone,
         email,
+        password,
         role
       })
     });
@@ -1492,6 +1645,13 @@ window.GDXApp = (() => {
       state.currentUser = res.user;
       state.activeUserId = res.user.user_id;
       state.userRole = res.user.role;
+
+      if (window.GDX_DB && Array.isArray(window.GDX_DB.users)) {
+        const uIdx = window.GDX_DB.users.findIndex(u => u.user_id === res.user.user_id);
+        if (uIdx >= 0) window.GDX_DB.users[uIdx] = res.user;
+        else window.GDX_DB.users.push(res.user);
+      }
+
       try {
         localStorage.setItem('gdx_auth_user', JSON.stringify(res.user));
       } catch (_) {}
@@ -1522,6 +1682,340 @@ window.GDXApp = (() => {
     switchPortal(1, '1.1');
   }
 
+  // ---------------------------------------------------------------------
+  // LEAFLET & OPENSTREETMAP LOCATION PICKER & GEOLOCATION
+  // ---------------------------------------------------------------------
+  const PROVINCE_COORDINATES = {
+    'Hồ Chí Minh': [10.7769, 106.7009],
+    'Hà Nội': [21.0285, 105.8542],
+    'Đà Nẵng': [16.0544, 108.2022],
+    'Hải Phòng': [20.8449, 106.6881],
+    'Cần Thơ': [10.0452, 105.7469],
+    'Bình Dương': [10.9804, 106.6519],
+    'Đồng Nai': [10.9574, 106.8427],
+    'Bà Rịa': [10.4958, 107.1687],
+    'Khánh Hòa': [12.2388, 109.1967],
+    'Lâm Đồng': [11.9404, 108.4583],
+    'Thừa Thiên Huế': [16.4637, 107.5909],
+    'Huế': [16.4637, 107.5909],
+    'Quảng Nam': [15.5651, 108.4816],
+    'Quảng Ngãi': [15.1205, 108.7923],
+    'Bình Định': [13.7830, 109.2197],
+    'Phú Yên': [13.0882, 109.0924],
+    'Ninh Thuận': [11.5647, 108.9882],
+    'Bình Thuận': [10.9333, 108.1000],
+    'Long An': [10.5360, 106.4134],
+    'Tiền Giang': [10.3544, 106.3653],
+    'Bến Tre': [10.2415, 106.3759],
+    'Trà Vinh': [9.9347, 106.3458],
+    'Vĩnh Long': [10.2537, 105.9722],
+    'Đồng Tháp': [10.4578, 105.6324],
+    'An Giang': [10.3831, 105.4358],
+    'Kiên Giang': [10.0125, 105.0809],
+    'Hậu Giang': [9.7844, 105.4701],
+    'Sóc Trăng': [9.6033, 105.9800],
+    'Bạc Liêu': [9.2941, 105.7278],
+    'Cà Mau': [9.1769, 105.1524],
+    'Tây Ninh': [11.3100, 106.0983],
+    'Bình Phước': [11.5333, 106.8833],
+    'Đắk Lắk': [12.6667, 108.0383],
+    'Đắk Nông': [12.0044, 107.6908],
+    'Gia Lai': [13.9833, 108.0000],
+    'Kon Tum': [14.3500, 108.0000],
+    'Quảng Bình': [17.4687, 106.6225],
+    'Quảng Trị': [16.8167, 107.1000],
+    'Nghệ An': [18.6734, 105.6813],
+    'Hà Tĩnh': [18.3560, 105.9058],
+    'Thanh Hóa': [19.8067, 105.7852],
+    'Ninh Bình': [20.2506, 105.9745],
+    'Nam Định': [20.4200, 106.1683],
+    'Thái Bình': [20.4500, 106.3333],
+    'Hà Nam': [20.5456, 105.9122],
+    'Hưng Yên': [20.6500, 106.0500],
+    'Hải Dương': [20.9372, 106.3147],
+    'Bắc Ninh': [21.1861, 106.0763],
+    'Bắc Giang': [21.2731, 106.1946],
+    'Vĩnh Phúc': [21.3089, 105.6049],
+    'Phú Thọ': [21.3228, 105.3283],
+    'Thái Nguyên': [21.5942, 105.8482],
+    'Lạng Sơn': [21.8536, 106.7615],
+    'Quảng Ninh': [20.9500, 107.0833]
+  };
+
+  let activeCustomerMap = null;
+  let activeCustomerMarker = null;
+
+  let reverseGeocodeTimer = null;
+
+  async function resolveAddressFromCoordinates(lat, lng, opts = {}) {
+    const latFormatted = Number(lat).toFixed(6);
+    const lngFormatted = Number(lng).toFixed(6);
+
+    const addrInput = document.getElementById(opts.addrInputId || 'obCustAddr')
+      || document.getElementById('profAddress')
+      || document.getElementById('wizAddress');
+
+    const statusPill = document.querySelector('.geo-map-status-pill span:last-child');
+    if (statusPill) {
+      statusPill.innerHTML = '<span class="status-dot" style="background:#e07a5f;"></span> Đang nhận diện địa chỉ từ GPS vệ tinh...';
+    }
+
+    try {
+      const res = await apiRequest(`/api/geo/reverse?lat=${latFormatted}&lng=${lngFormatted}`);
+      if (res && res.ok && res.detailed_address) {
+        if (addrInput) {
+          addrInput.value = res.detailed_address;
+          addrInput.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+          addrInput.style.borderColor = 'var(--color-primary)';
+          addrInput.style.boxShadow = '0 0 0 3px rgba(27, 67, 50, 0.2)';
+          setTimeout(() => {
+            addrInput.style.boxShadow = '';
+          }, 1500);
+        }
+
+        if (activeCustomerMarker) {
+          activeCustomerMarker.bindPopup(
+            `<strong>${res.detailed_address}</strong><br><span style="font-size:11px; color:#555;">${res.full_address || ''}</span>`
+          ).openPopup();
+        }
+
+        if (statusPill) {
+          statusPill.innerHTML = `<span class="status-dot is-online"></span> Đã nhận diện: <strong>${res.detailed_address}</strong>`;
+        }
+
+        // Tự động khớp Tỉnh/Thành phố & Phường/Xã trong dropdown nếu có
+        matchProvinceAndWardFromGeo(res.province_name, res.ward_name, opts);
+
+        showToast(`Đã nhận diện vị trí: ${res.detailed_address}`);
+        return res;
+      }
+    } catch (e) {
+      console.warn('Lỗi reverse geocode:', e);
+    }
+
+    if (statusPill) {
+      statusPill.innerHTML = '<span class="status-dot is-online"></span> Chạm vào bản đồ hoặc kéo chốt định vị để ghim chính xác số nhà';
+    }
+    return null;
+  }
+
+  function matchProvinceAndWardFromGeo(provinceName, wardName, opts = {}) {
+    if (!provinceName && !wardName) return;
+
+    const provSelect = document.getElementById(opts.provSelectId || 'obCustProvince')
+      || document.getElementById('wizProvSelect')
+      || document.getElementById('profProv');
+
+    const wardSelect = document.getElementById(opts.wardSelectId || 'obCustWard')
+      || document.getElementById('wizWardSelect')
+      || document.getElementById('profWard');
+
+    if (!provSelect) return;
+
+    // 1. Khớp Tỉnh / Thành phố
+    if (provinceName) {
+      const pNorm = provinceName.toLowerCase().replace(/^(tỉnh|thành phố|tp\.?)\s+/i, '').trim();
+      let matchedProvOption = null;
+      for (let i = 0; i < provSelect.options.length; i++) {
+        const optText = provSelect.options[i].text.toLowerCase();
+        if (optText.includes(pNorm) || pNorm.includes(optText.replace(/^(tỉnh|thành phố|tp\.?)\s+/i, '').trim())) {
+          matchedProvOption = provSelect.options[i];
+          break;
+        }
+      }
+      if (matchedProvOption && provSelect.value !== matchedProvOption.value) {
+        provSelect.value = matchedProvOption.value;
+        if (wardSelect) {
+          const db = window.GDX_DB;
+          const allWards = db.ward || db.wards || [];
+          const filteredWards = allWards.filter((w) => !w.provinceId || String(w.provinceId) === String(matchedProvOption.value));
+          const wardsToRender = filteredWards.length > 0 ? filteredWards : allWards.slice(0, 100);
+          wardSelect.innerHTML = wardsToRender
+            .map((w) => `<option value="${w.ward_id}">${w.name}</option>`)
+            .join('');
+        }
+      }
+    }
+
+    // 2. Khớp Phường / Xã
+    if (wardName && wardSelect) {
+      const wNorm = wardName.toLowerCase().replace(/^(phường|xã|thị trấn)\s+/i, '').trim();
+      for (let i = 0; i < wardSelect.options.length; i++) {
+        const optText = wardSelect.options[i].text.toLowerCase();
+        if (optText.includes(wNorm) || wNorm.includes(optText.replace(/^(phường|xã|thị trấn)\s+/i, '').trim())) {
+          wardSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+  }
+
+  function panCustomerMapTo(lat, lng, zoom) {
+    if (!activeCustomerMap || !activeCustomerMarker) return;
+    const targetZoom = zoom || activeCustomerMap.getZoom() || 14;
+    activeCustomerMarker.setLatLng([lat, lng]);
+    activeCustomerMap.flyTo([lat, lng], targetZoom, { animate: true, duration: 1.0 });
+
+    const latInput = document.getElementById('obCustLat') || document.getElementById('profLat');
+    const lngInput = document.getElementById('obCustLng') || document.getElementById('profLng');
+    const textSpan = document.getElementById('obCustCoordText') || document.getElementById('profCoordText');
+
+    const latFormatted = Number(lat).toFixed(6);
+    const lngFormatted = Number(lng).toFixed(6);
+
+    if (latInput) latInput.value = latFormatted;
+    if (lngInput) lngInput.value = lngFormatted;
+    if (textSpan) textSpan.textContent = `${latFormatted}, ${lngFormatted}`;
+    activeCustomerMarker.bindPopup(`<strong>Vị trí đã chọn</strong><br><span style="font-size:11px; color:#555;">${latFormatted}, ${lngFormatted}</span>`).openPopup();
+  }
+
+  function initCustomerLocationPicker(opts) {
+    const containerId = opts.containerId || 'customerLocationMap';
+    const el = document.getElementById(containerId);
+    if (!el) return null;
+
+    if (typeof L === 'undefined') {
+      console.warn('Thư viện Leaflet chưa được tải.');
+      return null;
+    }
+
+    if (activeCustomerMap) {
+      try {
+        activeCustomerMap.remove();
+      } catch (err) {
+        // ignore
+      }
+      activeCustomerMap = null;
+      activeCustomerMarker = null;
+    }
+
+    const initialLat = Number(opts.lat) || 10.741205;
+    const initialLng = Number(opts.lng) || 106.702110;
+    const zoom = opts.zoom || 15;
+
+    const map = L.map(containerId, {
+      center: [initialLat, initialLng],
+      zoom: zoom,
+      zoomControl: true,
+      scrollWheelZoom: true
+    });
+
+    activeCustomerMap = map;
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+    }).addTo(map);
+
+    const brandPinIcon = L.divIcon({
+      className: 'custom-map-pin',
+      html: `<div class="pin-marker-wrapper">
+        <div class="pin-pulse"></div>
+        <div class="pin-svg-icon">
+          <svg width="34" height="42" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 0C7.61 0 0 7.61 0 17C0 29.75 17 42 17 42C17 42 34 29.75 34 17C34 7.61 26.39 0 17 0Z" fill="#1B4332"/>
+            <circle cx="17" cy="17" r="7.5" fill="#FFFFFF"/>
+            <circle cx="17" cy="17" r="4.5" fill="#E07A5F"/>
+          </svg>
+        </div>
+      </div>`,
+      iconSize: [34, 42],
+      iconAnchor: [17, 42],
+      popupAnchor: [0, -42]
+    });
+
+    const marker = L.marker([initialLat, initialLng], {
+      draggable: true,
+      icon: brandPinIcon
+    }).addTo(map);
+
+    activeCustomerMarker = marker;
+
+    function syncLocation(lat, lng, popupHtml, skipReverseGeocode = false) {
+      const latFormatted = Number(lat).toFixed(6);
+      const lngFormatted = Number(lng).toFixed(6);
+
+      const latInput = document.getElementById(opts.latInputId || 'obCustLat');
+      const lngInput = document.getElementById(opts.lngInputId || 'obCustLng');
+      const textSpan = document.getElementById(opts.coordTextId || 'obCustCoordText');
+
+      if (latInput) latInput.value = latFormatted;
+      if (lngInput) lngInput.value = lngFormatted;
+      if (textSpan) textSpan.textContent = `${latFormatted}, ${lngFormatted}`;
+
+      const content = popupHtml || `<strong>Vị trí đón thợ</strong><br><span style="color:#555; font-size:11px;">Tọa độ: ${latFormatted}, ${lngFormatted}</span>`;
+      marker.bindPopup(content).openPopup();
+
+      // Tự động nhận diện số nhà, tên đường chi tiết qua reverse geocoding
+      if (!skipReverseGeocode) {
+        clearTimeout(reverseGeocodeTimer);
+        reverseGeocodeTimer = setTimeout(() => {
+          resolveAddressFromCoordinates(lat, lng, opts);
+        }, 400);
+      }
+    }
+
+    syncLocation(initialLat, initialLng, '<strong>Vị trí đón thợ</strong><br><span style="font-size:11px; color:#555;">Kéo ghim hoặc bấm vào bản đồ để chọn</span>', true);
+
+    marker.on('dragend', function () {
+      const pos = marker.getLatLng();
+      syncLocation(pos.lat, pos.lng);
+    });
+
+    map.on('click', function (e) {
+      marker.setLatLng(e.latlng);
+      syncLocation(e.latlng.lat, e.latlng.lng);
+    });
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
+
+    return { map, marker };
+  }
+
+  function locateUserGPS(targetLatInputId, targetLngInputId, targetTextId, targetAddrInputId, provSelectId, wardSelectId) {
+    if (!navigator.geolocation) {
+      showToast('Trình duyệt của bạn không hỗ trợ định vị GPS.');
+      return;
+    }
+    showToast('Đang kết nối GPS thiết bị...');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const latFormatted = lat.toFixed(6);
+        const lngFormatted = lng.toFixed(6);
+
+        if (activeCustomerMap && activeCustomerMarker) {
+          activeCustomerMarker.setLatLng([lat, lng]);
+          activeCustomerMap.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
+          activeCustomerMarker.bindPopup(`<strong>Vị trí GPS thực tế</strong><br><span style="font-size:11px; color:#2d6a4f;">Độ chính xác: &plusmn;${Math.round(pos.coords.accuracy || 10)}m</span>`).openPopup();
+        }
+
+        const latInput = document.getElementById(targetLatInputId || 'obCustLat');
+        const lngInput = document.getElementById(targetLngInputId || 'obCustLng');
+        const textSpan = document.getElementById(targetTextId || 'obCustCoordText');
+
+        if (latInput) latInput.value = latFormatted;
+        if (lngInput) lngInput.value = lngFormatted;
+        if (textSpan) textSpan.textContent = `${latFormatted}, ${lngFormatted}`;
+
+        // Lập tức gọi nhận diện địa chỉ chi tiết (Reverse Geocoding)
+        resolveAddressFromCoordinates(lat, lng, {
+          addrInputId: targetAddrInputId,
+          provSelectId: provSelectId,
+          wardSelectId: wardSelectId
+        });
+      },
+      (err) => {
+        console.warn('Geolocation error:', err);
+        showToast('Không thể lấy GPS (' + (err.message || 'Bị từ chối') + '). Vui lòng chạm vào bản đồ để ghim vị trí.');
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  }
+
   function handleProvinceChange(provinceSelectId, wardSelectId) {
     const provSelect = document.getElementById(provinceSelectId);
     const wardSelect = document.getElementById(wardSelectId);
@@ -1534,14 +2028,29 @@ window.GDXApp = (() => {
     wardSelect.innerHTML = wardsToRender
       .map((w) => `<option value="${w.ward_id}">${w.name}</option>`)
       .join('');
+
+    // Nếu đang có bản đồ Leaflet hiển thị, tự động bay tới tọa độ trung tâm tỉnh thành được chọn
+    const selectedOption = provSelect.options[provSelect.selectedIndex];
+    const provName = selectedOption ? selectedOption.text : '';
+    for (const [key, coords] of Object.entries(PROVINCE_COORDINATES)) {
+      if (provName.includes(key)) {
+        panCustomerMapTo(coords[0], coords[1], 13);
+        break;
+      }
+    }
   }
 
-  // 0.2: Customer Onboarding
+  // 0.2: Customer Onboarding (Địa điểm, Đơn vị hành chính & Định vị GPS)
   function renderScreen_0_2(container) {
     const provinces = window.GDX_DB.province || window.GDX_DB.provinces || [];
     const allWards = window.GDX_DB.ward || window.GDX_DB.wards || [];
     const defaultName = (state.currentUser && state.currentUser.full_name) || '';
     const defaultPhone = (state.currentUser && state.currentUser.phone_number) || '';
+
+    const existingCp = (window.GDX_DB.customer_profiles || []).find((c) => c.user_id === state.activeUserId);
+    const defaultLat = existingCp && existingCp.latitude ? Number(existingCp.latitude).toFixed(6) : '10.741205';
+    const defaultLng = existingCp && existingCp.longitude ? Number(existingCp.longitude).toFixed(6) : '106.702110';
+    const defaultAddr = existingCp && existingCp.default_address ? existingCp.default_address : 'Số 123 Đường Nguyễn Hữu Thọ, Phường Tân Phong';
 
     // Mặc định chọn TP. Hồ Chí Minh (provinceId: '29' ở Supabase hoặc '79' ở local mock) hoặc tỉnh đầu tiên
     const defaultProv = provinces.find((p) => p.provinceId === '29' || p.provinceId === '79') || provinces[0] || { provinceId: '29', name: 'Thành phố Hồ Chí Minh' };
@@ -1562,6 +2071,9 @@ window.GDXApp = (() => {
         <div class="col-8">
           <div class="panel">
             <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleCustomerOnboarding(this);">
+              <input type="hidden" id="obCustLat" name="latitude" value="${defaultLat}">
+              <input type="hidden" id="obCustLng" name="longitude" value="${defaultLng}">
+
               <div class="form-row-2">
                 <div class="field-group">
                   <label class="field-label" for="obCustName">Họ và tên người liên hệ (users.full_name)</label>
@@ -1593,18 +2105,34 @@ window.GDXApp = (() => {
               <div class="field-group">
                 <label class="field-label" for="obCustAddr">Số nhà, tên đường hoặc tòa căn hộ (default_address)</label>
                 <span class="field-hint">Địa chỉ này sẽ được tự động điền sẵn mỗi khi bạn đặt lịch dịch vụ mới</span>
-                <input type="text" id="obCustAddr" name="default_address" class="input" value="Số 123 Đường Nguyễn Hữu Thọ, Phường Tân Phong" required>
+                <input type="text" id="obCustAddr" name="default_address" class="input" value="${defaultAddr}" required>
               </div>
 
-              <div class="geo-map-canvas">
-                <div class="geo-pin-row">
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <span class="status-dot is-online"></span>
-                    <span><strong>Tọa độ vị trí nhà bạn:</strong> <span id="obCustCoordText" class="num">10.741205, 106.702110</span> (customer_profiles.latitude, longitude)</span>
+              <div class="field-group">
+                <label class="field-label" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>Địa điểm, Đơn vị hành chính &amp; Định vị GPS (Tọa độ không gian)</span>
+                  <span class="badge badge-success" style="font-weight:normal; font-size:11px;">Leaflet &bull; OpenStreetMap</span>
+                </label>
+                <div class="geo-map-card">
+                  <div class="geo-map-toolbar">
+                    <div class="geo-map-status-pill">
+                      <span class="status-dot is-online"></span>
+                      <span>Chạm vào bản đồ hoặc kéo chốt định vị để ghim chính xác số nhà</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.locateUserGPS('obCustLat', 'obCustLng', 'obCustCoordText', 'obCustAddr', 'obCustProvince', 'obCustWard')">
+                      ${Icons.pin()} Lấy tọa độ GPS &amp; Nhận diện địa chỉ
+                    </button>
                   </div>
-                  <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('obCustCoordText').textContent='10.728912, 106.712405'; GDXApp.showToast('Đã lấy tọa độ vị trí hiện tại')">
-                    ${Icons.pin()} Lấy tọa độ hiện tại
-                  </button>
+
+                  <div id="customerLocationMap" class="geo-map-container" tabindex="0" aria-label="Bản đồ định vị Leaflet OpenStreetMap"></div>
+
+                  <div class="geo-map-footer">
+                    <div>
+                      <span>Tọa độ đã chọn:</span>
+                      <span id="obCustCoordText" class="geo-coords-tag">${defaultLat}, ${defaultLng}</span>
+                    </div>
+                    <span class="field-hint" style="margin:0;">Lưu trữ trực tiếp vào customer_profiles.latitude &amp; longitude</span>
+                  </div>
                 </div>
               </div>
 
@@ -1629,6 +2157,10 @@ window.GDXApp = (() => {
                 <div class="field-hint">Chỉ hiển thị những thợ có nhận làm tại Phường/Xã của bạn.</div>
               </div>
               <div class="audit-item">
+                <strong>Bản đồ số không gian Leaflet + OSM</strong>
+                <div class="field-hint">Đo lường khoảng cách chính xác từ vị trí thợ đến cửa nhà bạn theo km thực tế.</div>
+              </div>
+              <div class="audit-item">
                 <strong>Đặt lịch nhanh trong 30 giây</strong>
                 <div class="field-hint">Không cần nhập lại địa chỉ và số điện thoại ở những lần đặt sau.</div>
               </div>
@@ -1641,6 +2173,20 @@ window.GDXApp = (() => {
         </div>
       </div>
     `;
+
+    // Khởi tạo bản đồ tương tác Leaflet + OpenStreetMap
+    initCustomerLocationPicker({
+      containerId: 'customerLocationMap',
+      lat: Number(defaultLat),
+      lng: Number(defaultLng),
+      zoom: 15,
+      latInputId: 'obCustLat',
+      lngInputId: 'obCustLng',
+      coordTextId: 'obCustCoordText',
+      addrInputId: 'obCustAddr',
+      provSelectId: 'obCustProvince',
+      wardSelectId: 'obCustWard'
+    });
   }
 
   async function handleCustomerOnboarding(form) {
@@ -1651,6 +2197,9 @@ window.GDXApp = (() => {
       return;
     }
 
+    const latVal = form.latitude ? parseFloat(form.latitude.value) : 10.741205;
+    const lngVal = form.longitude ? parseFloat(form.longitude.value) : 106.70211;
+
     const res = await apiRequest('/api/onboarding/customer', {
       method: 'POST',
       body: JSON.stringify({
@@ -1659,15 +2208,34 @@ window.GDXApp = (() => {
         phone_number: form.phone_number ? form.phone_number.value : '',
         ward_id: form.ward_id ? form.ward_id.value : '27403',
         default_address: form.default_address ? form.default_address.value : '',
-        latitude: 10.741205,
-        longitude: 106.70211
+        latitude: isNaN(latVal) ? 10.741205 : latVal,
+        longitude: isNaN(lngVal) ? 106.70211 : lngVal
       })
     });
 
     if (res && res.ok && res.customer_profile) {
       state.activeCustomerId = res.customer_profile.customer_id;
       if (res.user) state.currentUser = res.user;
-      showToast('Đã lưu hồ sơ khách hàng thành công! Bạn có thể đặt dịch vụ đầu tiên.');
+
+      // Đồng bộ vào DB client-side nếu có
+      if (window.GDX_DB && window.GDX_DB.customer_profiles) {
+        let cp = window.GDX_DB.customer_profiles.find(
+          (c) => String(c.user_id) === String(userId) || String(c.customer_id) === String(res.customer_profile.customer_id)
+        );
+        if (!cp) {
+          window.GDX_DB.customer_profiles.push(res.customer_profile);
+        } else {
+          Object.assign(cp, res.customer_profile);
+        }
+      }
+
+      // Cập nhật wizardDraft để trang đặt lịch nhận ngay lập tức địa chỉ vừa lưu
+      state.wizardDraft.ward_id = res.customer_profile.ward_id;
+      state.wizardDraft.address = res.customer_profile.default_address;
+      state.wizardDraft.latitude = res.customer_profile.latitude;
+      state.wizardDraft.longitude = res.customer_profile.longitude;
+
+      showToast('Đã lưu hồ sơ và vị trí GPS thành công! Bạn có thể đặt dịch vụ đầu tiên.');
       renderUserTopbar();
       switchPortal(1, '1.1');
     } else {
@@ -2010,6 +2578,24 @@ window.GDXApp = (() => {
   }
 
 
+  function isCookingService(s) {
+    if (!s) return false;
+    const t = (s.title || '').toLowerCase();
+    const slug = (s.slug || '').toLowerCase();
+    return t.includes('nấu') || t.includes('cơm') || t.includes('bếp') || t.includes('cooking') || slug.includes('nau-an') || String(s.category_id).endsWith('302') || s.category_id === 2 || s.category_id === '2';
+  }
+
+  function getServiceImage(s) {
+    if (!s) return 'assets/cleaning-livingroom.jpg';
+    if (s.image_url) return s.image_url;
+    const t = (s.title || '').toLowerCase();
+    if (t.includes('nấu') || t.includes('cơm')) return 'assets/cooking-family-meal.jpg';
+    if (t.includes('đầu bếp') || t.includes('tiệc')) return 'assets/cooking-chef-prep.jpg';
+    if (t.includes('deep') || t.includes('sâu') || t.includes('tổng vệ sinh')) return 'assets/cleaning-deep.jpg';
+    if (isCookingService(s)) return 'assets/cooking-family-meal.jpg';
+    return 'assets/cleaning-livingroom.jpg';
+  }
+
   // =====================================================================
   // SCREEN RENDERERS: PHÂN HỆ 1 (CUSTOMER PORTAL: 1.1 – 1.6)
   // =====================================================================
@@ -2017,7 +2603,12 @@ window.GDXApp = (() => {
   // 1.1: Trang chủ & Khám phá dịch vụ (Warm Minimalism — Reference Layout)
   function renderScreen_1_1(container) {
     const db = window.GDX_DB;
-    const activeServices = db.services.filter((s) => s.is_active);
+    const activeServices = (db.services || []).filter((s) => {
+      if (!s.is_active) return false;
+      const t = (s.title || '').toLowerCase();
+      if (t.includes('repair') || t.includes('sửa') || t.includes('appliance')) return false;
+      return true;
+    });
     const categories = db.service_categories;
     const publicProviders = db.provider_public_profiles;
     const wards = db.ward;
@@ -2028,10 +2619,10 @@ window.GDXApp = (() => {
 
     const filteredServices = activeServices.filter((s) => {
       if (state.catalogFilter.categoryId !== 'all') {
-        const catId = Number(state.catalogFilter.categoryId);
-        const cat = categories.find((c) => c.category_id === s.category_id);
-        const matchesCat = s.category_id === catId || (cat && cat.parent_id === catId);
-        if (!matchesCat) return false;
+        const catId = String(state.catalogFilter.categoryId);
+        const isCooking = isCookingService(s);
+        if (catId === '1' && isCooking) return false;
+        if (catId === '2' && !isCooking) return false;
       }
       if (state.catalogFilter.pricingType !== 'all' && s.pricing_type !== state.catalogFilter.pricingType) {
         return false;
@@ -2057,12 +2648,10 @@ window.GDXApp = (() => {
         : '4.92';
 
     const serviceDescriptions = {
-      101: 'Làm sạch phòng khách, phòng ngủ, khu vực bếp, nhà vệ sinh và thu gom phân loại rác sinh hoạt hằng ngày.',
-      102: 'Tổng vệ sinh chuyên sâu toàn bộ căn hộ, lau kính mặt trong, hút bụi khe cửa và khử khuẩn bề mặt.',
-      103: 'Xịt rửa dàn lạnh, dàn nóng, thông ống thoát nước và kiểm tra hoạt động máy điều hòa treo tường.',
-      104: 'Giặt phun hút khử mùi ghế sofa nỉ, da, nhung hoặc nệm ngủ ngay tại phòng khách gia đình.',
-      105: 'Đi chợ theo thực đơn yêu cầu, sơ chế nguyên liệu sạch sẽ, nấu 3–4 món cơm gia đình và dọn rửa gian bếp.',
-      301: 'Làm sạch phòng khách, phòng ngủ, khu vực bếp, nhà vệ sinh và thu gom phân loại rác sinh hoạt hằng ngày.'
+      301: 'Lau dọn phòng khách, phòng ngủ, lau chùi bàn ghế, hút bụi sàn nhà, vệ sinh nhà tắm và thu gom rác sinh hoạt.',
+      302: 'Làm sạch sâu toàn diện từ trần đến sàn, khử khuẩn bề mặt, lau kính mặt trong và xử lý vết ố nhà bếp, phòng tắm.',
+      303: 'Sơ chế thực phẩm tươi sạch, nấu 3–4 món ăn nóng hổi theo khẩu vị gia đình (canh, món mặn, món xào) và dọn rửa sạch bếp.',
+      304: 'Lên thực đơn dinh dưỡng theo yêu cầu, nấu các món ăn chu đáo cho gia đình hoặc tiệc ấm cúng, trình bày đẹp mắt và vệ sinh bếp.'
     };
 
     container.innerHTML = `
@@ -2097,16 +2686,16 @@ window.GDXApp = (() => {
           : ''
       }
 
-      <!-- 1. HERO SECTION & OMNI-SEARCH (Warm Minimalism Reference Layout) -->
+      <!-- 1. HERO SECTION & OMNI-SEARCH (Home Cleaning & Home Cooking) -->
       <section class="hero-section">
         <div class="site-container hero-grid">
           <!-- Left Column: Value Proposition + Omni-Search + Quick Chips + Wizard Prompt + Stats -->
           <div class="hero-content">
             <h1 class="hero-headline">
-              An tâm trao gửi tổ ấm nhỏ
+              Dọn dẹp chu đáo · Bữa cơm vẹn tròn
             </h1>
             <p class="hero-subtitle">
-              Đặt lịch dọn dẹp nhà cửa theo giờ, tổng vệ sinh căn hộ, vệ sinh máy lạnh, giặt sofa và nấu cơm gia đình tại TP.HCM. 100% đối tác đã đối chiếu Căn cước công dân và công khai bảng giá niêm yết.
+              Gia Đình Xanh chuyên cung cấp 2 dịch vụ gia đình thiết yếu: Dọn dẹp nhà cửa (Home Cleaning) và Nấu ăn tại nhà (Home Cooking) tại TP.HCM. Đối tác được kiểm tra lý lịch, đối chiếu Căn cước công dân và niêm yết bảng giá công khai.
             </p>
 
             <!-- Omni-Search Bar (Bound to services, ward, and scheduled_time) -->
@@ -2168,18 +2757,15 @@ window.GDXApp = (() => {
 
             <!-- Quick Filter Chips -->
             <div class="quick-chips" aria-label="Gợi ý tìm kiếm nhanh">
-              <span class="chips-label">Phổ biến:</span>
+              <span class="chips-label">Dịch vụ:</span>
               <button type="button" class="quick-chip ${state.catalogFilter.categoryId === 'all' ? 'is-active' : ''}" onclick="GDXApp.setCatalogCategory('all'); document.getElementById('dich-vu')?.scrollIntoView({behavior:'smooth'});">
                 Tất cả (${activeServices.length})
               </button>
               <button type="button" class="quick-chip ${state.catalogFilter.categoryId === '1' ? 'is-active' : ''}" onclick="GDXApp.setCatalogCategory('1'); document.getElementById('dich-vu')?.scrollIntoView({behavior:'smooth'});">
-                Chăm sóc nhà cửa
+                Dọn dẹp nhà cửa (Home Cleaning)
               </button>
               <button type="button" class="quick-chip ${state.catalogFilter.categoryId === '2' ? 'is-active' : ''}" onclick="GDXApp.setCatalogCategory('2'); document.getElementById('dich-vu')?.scrollIntoView({behavior:'smooth'});">
-                Vệ sinh máy lạnh
-              </button>
-              <button type="button" class="quick-chip ${state.catalogFilter.categoryId === '3' ? 'is-active' : ''}" onclick="GDXApp.setCatalogCategory('3'); document.getElementById('dich-vu')?.scrollIntoView({behavior:'smooth'});">
-                Nấu cơm gia đình
+                Nấu ăn tại nhà (Home Cooking)
               </button>
               <button type="button" class="quick-chip" onclick="GDXApp.go('1.6')">
                 Đã lưu (${favCount})
@@ -2193,7 +2779,7 @@ window.GDXApp = (() => {
                 <h2 class="wizard-prompt-title">Tự cấu hình thời lượng &amp; chọn thợ</h2>
                 <p class="wizard-prompt-desc">Tùy chỉnh số giờ phục vụ, kiểm tra lịch rảnh thực tế của từng đối tác thợ trong khu vực và nhận báo giá tự động.</p>
               </div>
-              <button type="button" class="wizard-cta-btn" onclick="GDXApp.go('1.2', {serviceId: ${activeServices[0] ? activeServices[0].service_id : 101}})">
+              <button type="button" class="wizard-cta-btn" onclick="GDXApp.go('1.2', {serviceId: ${activeServices[0] ? activeServices[0].service_id : 301}})">
                 Tự cấu hình &amp; Báo giá ngay
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -2217,7 +2803,7 @@ window.GDXApp = (() => {
                   : `
                   <div class="stat-item">
                     <strong class="stat-number num">Tiêu chuẩn</strong>
-                    <span class="stat-desc">Xác minh danh tính CCCD &amp; tay nghề kỹ thuật</span>
+                    <span class="stat-desc">Xác minh danh tính CCCD &amp; tay nghề thực tế</span>
                   </div>
                   <div class="stat-item">
                     <strong class="stat-number num">Minh bạch</strong>
@@ -2226,22 +2812,15 @@ window.GDXApp = (() => {
               }
               <div class="stat-item">
                 <strong class="stat-number num">${activeServices.length} Gói dịch vụ</strong>
-                <span class="stat-desc">Đơn giá niêm yết theo giờ &amp; trọn gói cố định</span>
+                <span class="stat-desc">Chuyên sâu Dọn dẹp &amp; Nấu ăn gia đình</span>
               </div>
             </div>
           </div>
 
-          <!-- Right Column: Warm Documentary Photography + Floating Trust Card -->
+          <!-- Right Column: Warm Documentary Photography -->
           <div class="hero-media-wrapper">
             <div class="hero-media-frame">
-              <img src="assets/service-cleaning.jpg" alt="Đối tác Gia Đình Xanh tận tâm chăm sóc tổ ấm" class="hero-image" loading="eager">
-              <div class="media-trust-card">
-                <div class="trust-card-text">
-                  <strong>Hồ sơ Đối tác xác thực 100%</strong>
-                  <span>Đối chiếu CCCD tại Gia Đình Xanh &amp; minh bạch chi phí</span>
-                </div>
-                <span class="badge badge-positive">Đã xác minh</span>
-              </div>
+              <img src="assets/hero-home-clean.jpg" alt="Không gian nhà cửa sáng sạch ấm cúng cùng Gia Đình Xanh" class="hero-image" loading="eager">
             </div>
           </div>
         </div>
@@ -2251,11 +2830,10 @@ window.GDXApp = (() => {
       <section id="dich-vu" class="section-services">
         <div class="site-container">
           <div class="section-header">
-            <h2 class="section-title">Hạng mục Dịch vụ Gia đình</h2>
+            <h2 class="section-title">Hạng mục Dịch vụ: Dọn dẹp &amp; Nấu ăn tại nhà</h2>
             <p class="section-subtitle">
               Lựa chọn linh hoạt theo giờ hoặc trọn gói theo ca. Đơn giá niêm yết rõ ràng trước khi bạn xác nhận đặt lịch.
             </p>
-            <p class="screen-finding">Bảng: service_categories (parent_id đa cấp), services (is_active = TRUE), favorites.</p>
           </div>
 
           <div class="filter-toolbar">
@@ -2264,13 +2842,10 @@ window.GDXApp = (() => {
                 Tất cả (${activeServices.length})
               </button>
               <button type="button" class="filter-chip" aria-pressed="${state.catalogFilter.categoryId === '1'}" onclick="GDXApp.setCatalogCategory('1')">
-                Chăm sóc nhà cửa
+                Dọn dẹp nhà cửa (Home Cleaning)
               </button>
               <button type="button" class="filter-chip" aria-pressed="${state.catalogFilter.categoryId === '2'}" onclick="GDXApp.setCatalogCategory('2')">
-                Điện máy &amp; Điều hòa
-              </button>
-              <button type="button" class="filter-chip" aria-pressed="${state.catalogFilter.categoryId === '3'}" onclick="GDXApp.setCatalogCategory('3')">
-                Bếp &amp; Nội trợ
+                Nấu ăn tại nhà (Home Cooking)
               </button>
             </div>
 
@@ -2281,10 +2856,165 @@ window.GDXApp = (() => {
                 <option value="fixed" ${state.catalogFilter.pricingType === 'fixed' ? 'selected' : ''}>Trọn gói cố định (Fixed)</option>
               </select>
               <div class="search-input-wrap">
-                <input type="search" class="input" style="min-height:42px; border-radius:var(--radius-pill);" placeholder="Tìm dịch vụ (vd: máy lạnh, sofa)..." value="${state.catalogFilter.searchQuery}" oninput="GDXApp.setCatalogSearch(this.value)" aria-label="Tìm kiếm dịch vụ">
+                <input type="search" class="input" style="min-height:42px; border-radius:var(--radius-pill);" placeholder="Tìm dịch vụ (dọn dẹp, tổng vệ sinh, nấu ăn, đầu bếp)..." value="${state.catalogFilter.searchQuery}" oninput="GDXApp.setCatalogSearch(this.value)" aria-label="Tìm kiếm dịch vụ">
               </div>
             </div>
           </div>
+
+          <div class="services-grid">
+            ${
+              filteredServices.length === 0
+                ? `<div class="panel" style="grid-column:1 / -1; text-align:center; padding:36px;">
+                    <div style="font-family:var(--font-heading); font-weight:700; font-size:1.125rem; margin-bottom:6px;">Không tìm thấy gói dịch vụ phù hợp</div>
+                    <p class="field-hint" style="margin-bottom:16px;">Hãy thử xóa từ khóa tìm kiếm hoặc chọn lại danh mục "Tất cả".</p>
+                    <button type="button" class="ghost-btn btn-sm" onclick="GDXApp.resetCatalogFilters()">Xem tất cả dịch vụ</button>
+                  </div>`
+                : filteredServices
+                    .map((s) => {
+                      const cat = categories.find((c) => c.category_id === s.category_id);
+                      const isFav = db.favorites.some(
+                        (f) => f.customer_id === state.activeCustomerId && f.service_id === s.service_id
+                      );
+                      const providerCount = db.provider_services.filter((ps) => {
+                        const p = publicProviders.find((pub) => pub.provider_id === ps.provider_id);
+                        return ps.service_id === s.service_id && Boolean(p);
+                      }).length;
+                      const desc =
+                        s.description ||
+                        serviceDescriptions[s.service_id] ||
+                        'Gói dịch vụ chăm sóc gia đình tiêu chuẩn với đội ngũ thợ đã xác minh hồ sơ tại TP.HCM.';
+
+                      return `
+                      <article class="service-card">
+                        <div class="service-card-media">
+                          <img src="${getServiceImage(s)}" alt="${s.title}" loading="lazy">
+                          <span class="service-badge-pill">${isCookingService(s) ? 'Nấu ăn tại nhà (Home Cooking)' : 'Dọn dẹp nhà cửa (Home Cleaning)'}</span>
+                          <button type="button" class="fav-icon-btn ${isFav ? 'is-favorited' : ''}" onclick="GDXApp.toggleFavorite(${s.service_id})" aria-label="${isFav ? 'Bỏ lưu dịch vụ' : 'Lưu dịch vụ yêu thích'}" title="${isFav ? 'Đã lưu yêu thích' : 'Lưu vào yêu thích'}">
+                            ${Icons.heart(isFav)}
+                          </button>
+                        </div>
+                        <div class="service-card-body">
+                          <h3 class="service-title">${s.title}</h3>
+                          <p class="service-desc">${desc}</p>
+                          <ul class="service-features">
+                            <li>Thời lượng tiêu chuẩn: ~${s.estimated_duration} phút / ca</li>
+                            <li>Hình thức tính phí: ${s.pricing_type === 'hourly' ? 'Tính theo giờ thực tế' : 'Trọn gói cố định theo lần'}</li>
+                            <li>Đội ngũ sẵn sàng: ${providerCount} đối tác thợ đã xác minh CCCD</li>
+                          </ul>
+                          <div class="service-card-footer">
+                            <div class="service-price-box">
+                              <span class="price-label">Giá niêm yết</span>
+                              <strong class="price-value num">${formatMoney(s.price)}<span class="price-unit">${s.pricing_type === 'hourly' ? '/giờ' : '/lần'}</span></strong>
+                            </div>
+                            <button type="button" class="primary-btn btn-sm" onclick="GDXApp.go('1.2', {serviceId: ${s.service_id}})">
+                              Chọn dịch vụ
+                            </button>
+                          </div>
+                        </div>
+                      </article>`;
+                    })
+                    .join('')
+            }
+          </div>
+
+          <div class="services-wizard-callout">
+            <div class="callout-info">
+              <h3 class="callout-title">Cần tùy chỉnh thời lượng hoặc chọn thợ quen?</h3>
+              <p class="callout-desc">Sử dụng trình cấu hình để chọn khung giờ hẹn, kiểm tra khoảng cách của thợ và nhận báo giá chi tiết.</p>
+            </div>
+            <button type="button" class="wizard-cta-btn" onclick="GDXApp.go('1.2', {serviceId: ${activeServices[0] ? activeServices[0].service_id : 301}})">
+              Mở trình cấu hình chi tiết &rarr;
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2.5. VISUAL GALLERY SHOWCASE (TẬP TRUNG 2 DỊCH VỤ CỐT LÕI VỚI HÌNH ẢNH ĐA DẠNG) -->
+      <section class="section-gallery-showcase">
+        <div class="site-container">
+          <div class="section-header" style="text-align:center; max-width:680px; margin:0 auto 36px;">
+            <span class="auth-badge-pill" style="margin-bottom:8px;">Không gian sống &amp; Bữa cơm ấm</span>
+            <h2 class="section-title">Hai giải pháp trọn vẹn cho tổ ấm hiện đại</h2>
+            <p class="section-subtitle">
+              Không dàn trải, Gia Đình Xanh tập trung hoàn thiện tối đa chất lượng phục vụ ở 2 nhu cầu thiết yếu nhất của mỗi gia đình.
+            </p>
+          </div>
+
+          <div class="gallery-grid-2col">
+            <!-- Card 1: Home Cleaning Showcase -->
+            <article class="gallery-service-card">
+              <div class="gallery-photo-strip">
+                <img src="assets/cleaning-livingroom.jpg" alt="Dọn dẹp phòng khách tinh tươm" loading="lazy">
+                <img src="assets/cleaning-detail.jpg" alt="Chăm chút từng góc nhỏ ngăn nắp" loading="lazy">
+              </div>
+              <div class="gallery-card-body">
+                <div>
+                  <span class="gallery-tag-pill">
+                    ${Icons.shield()} Phân hệ Dọn dẹp nhà cửa (Home Cleaning)
+                  </span>
+                  <h3 class="gallery-title">Không gian sống sáng trong, tinh tươm &amp; khử khuẩn</h3>
+                  <p class="gallery-desc">
+                    Lau dọn phòng khách, phòng ngủ, hút bụi sofa, lau kính mặt trong và cọ rửa nhà tắm sạch sẽ. Sử dụng dung dịch tẩy rửa sinh học an toàn cho trẻ nhỏ.
+                  </p>
+                  <ul class="gallery-highlights">
+                    <li>
+                      ${Icons.check()}
+                      <span>Lau sàn, hút bụi chuyên sâu và lau chùi bàn ghế, đồ đạc</span>
+                    </li>
+                    <li>
+                      ${Icons.check()}
+                      <span>Tẩy sạch dầu mỡ khu vực bếp và khử khuẩn nhà vệ sinh</span>
+                    </li>
+                    <li>
+                      ${Icons.check()}
+                      <span>Tùy chọn theo giờ linh hoạt (từ 2 giờ) hoặc tổng vệ sinh trọn gói</span>
+                    </li>
+                  </ul>
+                </div>
+                <button type="button" class="primary-btn btn-sm" style="width:100%;" onclick="GDXApp.setCatalogCategory('1'); document.getElementById('dich-vu')?.scrollIntoView({behavior:'smooth'});">
+                  Xem các gói Dọn dẹp nhà cửa &rarr;
+                </button>
+              </div>
+            </article>
+
+            <!-- Card 2: Home Cooking Showcase -->
+            <article class="gallery-service-card">
+              <div class="gallery-photo-strip">
+                <img src="assets/cooking-family-meal.jpg" alt="Mâm cơm gia đình ấm cúng" loading="lazy">
+                <img src="assets/cooking-pot-stew.jpg" alt="Món ăn nóng hổi đượm vị" loading="lazy">
+              </div>
+              <div class="gallery-card-body">
+                <div>
+                  <span class="gallery-tag-pill" style="background:#fef3c7; color:#92400e;">
+                    ${Icons.check()} Phân hệ Nấu ăn tại nhà (Home Cooking)
+                  </span>
+                  <h3 class="gallery-title">Bữa cơm nóng hổi, chuẩn vị ngon mẹ nấu</h3>
+                  <p class="gallery-desc">
+                    Đầu bếp gia đình đến tận nhà sơ chế nguyên liệu tươi sạch, nấu 3–4 món ăn tròn vị theo khẩu vị riêng của gia đình bạn và dọn rửa sạch khu bếp sau khi nấu.
+                  </p>
+                  <ul class="gallery-highlights">
+                    <li>
+                      ${Icons.check()}
+                      <span>Sơ chế rau củ, thịt cá tươi sống đảm bảo vệ sinh an toàn thực phẩm</span>
+                    </li>
+                    <li>
+                      ${Icons.check()}
+                      <span>Nấu đa dạng món canh, mặn, xào theo yêu cầu dinh dưỡng gia đình</span>
+                    </li>
+                    <li>
+                      ${Icons.check()}
+                      <span>Rửa sạch chén bát xoong nồi và lau sạch gian bếp sau bữa nấu</span>
+                    </li>
+                  </ul>
+                </div>
+                <button type="button" class="primary-btn btn-sm" style="width:100%;" onclick="GDXApp.setCatalogCategory('2'); document.getElementById('dich-vu')?.scrollIntoView({behavior:'smooth'});">
+                  Xem các gói Nấu ăn tại nhà &rarr;
+                </button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
 
           <div class="services-grid">
             ${
@@ -2430,7 +3160,7 @@ window.GDXApp = (() => {
           : ''
       }
 
-      <!-- 4. TRUST & TRANSPARENCY SECTION (100% DB-Compliant) -->
+      <!-- 4. TRUST & TRANSPARENCY SECTION (DB-Compliant) -->
       <section id="an-toan" class="section-trust">
         <div class="site-container">
           <div class="trust-split-layout">
@@ -2641,6 +3371,49 @@ window.GDXApp = (() => {
     go(state.currentScreen);
   }
 
+  // Helper tra cứu hồ sơ khách hàng hoạt động (Active Customer Profile)
+  function getActiveCustomerProfile() {
+    const db = window.GDX_DB;
+    if (!db || !db.customer_profiles) return null;
+
+    // 1. Tìm theo state.activeCustomerId (chấp nhận cả string lẫn number)
+    if (state.activeCustomerId) {
+      const byCid = db.customer_profiles.find(
+        (c) => String(c.customer_id) === String(state.activeCustomerId)
+      );
+      if (byCid) return byCid;
+    }
+
+    // 2. Tìm theo state.activeUserId (UUID)
+    if (state.activeUserId) {
+      const byUid = db.customer_profiles.find(
+        (c) => String(c.user_id) === String(state.activeUserId)
+      );
+      if (byUid) {
+        state.activeCustomerId = byUid.customer_id;
+        return byUid;
+      }
+    }
+
+    // 3. Tìm theo currentUser nếu có
+    if (state.currentUser && state.currentUser.user_id) {
+      const byCur = db.customer_profiles.find(
+        (c) => String(c.user_id) === String(state.currentUser.user_id)
+      );
+      if (byCur) {
+        state.activeCustomerId = byCur.customer_id;
+        return byCur;
+      }
+    }
+
+    // 4. Fallback ở chế độ dev/mock không phải production
+    if (!state.isProduction && db.customer_profiles.length > 0) {
+      return db.customer_profiles[0];
+    }
+
+    return null;
+  }
+
   // 1.2: Cấu hình dịch vụ trước khi đặt (Booking Wizard — Reference Layout)
   function renderScreen_1_2(container, params = {}) {
     if (params.serviceId) state.selectedServiceId = Number(params.serviceId);
@@ -2649,34 +3422,66 @@ window.GDXApp = (() => {
     if (params.scheduledTime) state.wizardDraft.scheduled_time = params.scheduledTime;
 
     const db = window.GDX_DB;
-    const activeServices = (db.services || []).filter((s) => s.is_active);
+    const activeServices = (db.services || []).filter((s) => {
+      if (!s.is_active) return false;
+      const t = (s.title || '').toLowerCase();
+      if (t.includes('repair') || t.includes('sửa') || t.includes('appliance')) return false;
+      return true;
+    });
+
     const svc = activeServices.find((s) => s.service_id === state.selectedServiceId) || activeServices[0] || {
       service_id: 301,
-      title: 'Dọn dẹp nhà cửa',
-      price: 180000,
+      title: 'Dọn dẹp nhà cửa theo giờ tiêu chuẩn',
+      price: 85000,
       pricing_type: 'hourly',
       estimated_duration: 120
     };
-    const cust = (db.customer_profiles || []).find((c) => c.customer_id === state.activeCustomerId);
+
+    if (!state.wizardCategory) {
+      state.wizardCategory = isCookingService(svc) ? '2' : '1';
+    }
+
+    const categoryServices = activeServices.filter((s) => {
+      const isCooking = isCookingService(s);
+      return state.wizardCategory === '2' ? isCooking : !isCooking;
+    });
+    const cust = getActiveCustomerProfile();
     const provinces = db.province || db.provinces || [];
     const allWards = db.ward || db.wards || [];
-    const selectedWardId = state.wizardDraft.ward_id || (cust ? cust.ward_id : (allWards[0] ? allWards[0].ward_id : '70101063'));
+
+    // Lựa chọn Phường/Xã:
+    // 1. Tham số truyền vào params.wardId (khi tìm kiếm omni-search)
+    // 2. ward_id từ Hồ sơ khách hàng đã lưu (cust.ward_id)
+    // 3. Draft tạm nếu vừa chuyển trong phiên
+    // 4. Phường mặc định đầu tiên
+    const selectedWardId = params.wardId || (cust && cust.ward_id) || state.wizardDraft.ward_id || (allWards[0] ? allWards[0].ward_id : '27403');
     const currentBookingWard = allWards.find((w) => String(w.ward_id) === String(selectedWardId));
     const currentBookingProvId = currentBookingWard ? String(currentBookingWard.provinceId) : (provinces.find((p) => p.provinceId === '29' || p.provinceId === '79')?.provinceId || '29');
     const bookingWards = allWards.filter((w) => !w.provinceId || String(w.provinceId) === String(currentBookingProvId));
     const wardsToRender = bookingWards.length > 0 ? bookingWards : allWards.slice(0, 100);
-    const selectedTime = state.wizardDraft.scheduled_time || '2026-10-25T09:00';
 
-    const matchingProviderIds = db.provider_services
+    // Địa chỉ chi tiết:
+    // Ưu tiên params.address -> cust.default_address -> state.wizardDraft.address
+    const defaultAddressValue = (params.address !== undefined)
+      ? params.address
+      : (cust && cust.default_address ? cust.default_address : (state.wizardDraft.address || ''));
+
+    const selectedTime = params.scheduledTime || state.wizardDraft.scheduled_time || '2026-10-25T09:00';
+
+    const matchingProviderIds = (db.provider_services || [])
       .filter((ps) => ps.service_id === svc.service_id)
       .map((ps) => ps.provider_id);
 
-    const eligibleProviders = db.provider_public_profiles.filter((p) =>
-      matchingProviderIds.includes(p.provider_id)
+    const eligibleProviders = (db.provider_public_profiles || []).filter((p) =>
+      matchingProviderIds.length === 0 || matchingProviderIds.includes(p.provider_id)
     );
 
-    if (!eligibleProviders.some((p) => p.provider_id === state.selectedProviderId) && eligibleProviders.length > 0) {
-      state.selectedProviderId = eligibleProviders[0].provider_id;
+    if (state.wizardProviderMode === 'direct') {
+      if (!eligibleProviders.some((p) => p.provider_id === state.selectedProviderId) && eligibleProviders.length > 0) {
+        state.selectedProviderId = eligibleProviders[0].provider_id;
+      }
+    } else {
+      state.selectedProviderId = null;
     }
 
     const selectedProv =
@@ -2735,33 +3540,60 @@ window.GDXApp = (() => {
       <div class="wizard-layout">
         <!-- Left Column: Configuration Cards -->
         <div class="form-stack">
-          <!-- Step 1: Select Service & Duration -->
+          <!-- Step 1: Select Category, Service & Duration -->
           <div class="wizard-main-content form-stack">
             <div class="panel-header" style="margin-bottom:0;">
               <div>
-                <h2 class="panel-title" style="font-size:1.35rem;">1. Chọn hạng mục dịch vụ &amp; Thời lượng</h2>
-                <p class="field-hint">Bấm chọn gói dịch vụ gia đình bạn cần thực hiện</p>
+                <h2 class="panel-title" style="font-size:1.35rem;">1. Chọn Hạng mục, Dịch vụ &amp; Thời lượng</h2>
+                <p class="field-hint">Chọn hạng mục chính, gói dịch vụ chi tiết và cấu hình thời lượng phù hợp</p>
               </div>
               <span class="badge badge-positive">${svc.pricing_type === 'hourly' ? 'Tính theo giờ (Hourly)' : 'Trọn gói cố định (Fixed)'}</span>
             </div>
 
-            <div class="services-selection-list" role="radiogroup" aria-label="Chọn gói dịch vụ">
-              ${activeServices
-                .map((s) => {
-                  const isSel = s.service_id === svc.service_id;
-                  return `
-                  <button type="button" class="service-select-item ${isSel ? 'is-selected' : ''}" onclick="GDXApp.go('1.2', {serviceId: ${s.service_id}})">
-                    <div class="select-item-left">
-                      <span class="select-checkbox" aria-hidden="true">${isSel ? '✓' : ''}</span>
-                      <div class="select-item-details">
-                        <span class="select-item-title">${s.title}</span>
-                        <span class="select-item-sub">Thời lượng tiêu chuẩn ~${s.estimated_duration} phút · ${s.pricing_type === 'hourly' ? 'Tính phí theo giờ' : 'Đơn giá trọn gói cố định'}</span>
+            <!-- 1A. Category Selection -->
+            <div class="field-group" style="margin-bottom:0;">
+              <label class="field-label" style="font-size:0.9375rem; font-weight:700;">Hạng mục dịch vụ chính:</label>
+              <div class="category-selector-grid">
+                <button type="button" class="category-select-card ${state.wizardCategory === '1' ? 'is-active' : ''}" onclick="GDXApp.setWizardCategory('1')">
+                  <div class="category-icon-box">🧹</div>
+                  <div>
+                    <strong style="font-family:var(--font-heading); font-size:1rem; display:block; color:var(--color-secondary);">Dọn dẹp nhà cửa (Home Cleaning)</strong>
+                    <span class="field-hint">Dọn dẹp theo giờ, tổng vệ sinh căn hộ chuyên sâu</span>
+                  </div>
+                </button>
+                <button type="button" class="category-select-card ${state.wizardCategory === '2' ? 'is-active' : ''}" onclick="GDXApp.setWizardCategory('2')">
+                  <div class="category-icon-box">🍳</div>
+                  <div>
+                    <strong style="font-family:var(--font-heading); font-size:1rem; display:block; color:var(--color-secondary);">Nấu ăn tại nhà (Home Cooking)</strong>
+                    <span class="field-hint">Nấu mâm cơm gia đình, đầu bếp theo giờ</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- 1B. Service Selection -->
+            <div class="field-group" style="margin-bottom:0;">
+              <label class="field-label" style="font-size:0.9375rem; font-weight:700;">Gói dịch vụ chi tiết (${categoryServices.length} gói có sẵn):</label>
+              <div class="services-selection-list" role="radiogroup" aria-label="Chọn gói dịch vụ">
+                ${categoryServices
+                  .map((s) => {
+                    const isSel = s.service_id === svc.service_id;
+                    const img = getServiceImage(s);
+                    return `
+                    <button type="button" class="service-select-item ${isSel ? 'is-selected' : ''}" onclick="GDXApp.go('1.2', {serviceId: ${s.service_id}})">
+                      <div class="select-item-left">
+                        <span class="select-checkbox" aria-hidden="true">${isSel ? '✓' : ''}</span>
+                        <img src="${img}" alt="${s.title}" class="select-item-thumb">
+                        <div class="select-item-details">
+                          <span class="select-item-title">${s.title}</span>
+                          <span class="select-item-sub">Thời lượng tiêu chuẩn ~${s.estimated_duration} phút · ${s.pricing_type === 'hourly' ? 'Tính phí theo giờ' : 'Đơn giá trọn gói cố định'}</span>
+                        </div>
                       </div>
-                    </div>
-                    <span class="select-item-rate num">${formatMoney(s.price)}${s.pricing_type === 'hourly' ? '/giờ' : '/lần'}</span>
-                  </button>`;
-                })
-                .join('')}
+                      <span class="select-item-rate num">${formatMoney(s.price)}${s.pricing_type === 'hourly' ? '/giờ' : '/lần'}</span>
+                    </button>`;
+                  })
+                  .join('')}
+              </div>
             </div>
 
             ${
@@ -2796,9 +3628,20 @@ window.GDXApp = (() => {
 
           <!-- Step 2 & 3: Time, Ward & Address -->
           <div class="wizard-main-content form-stack">
-            <div>
-              <h2 class="panel-title" style="font-size:1.35rem;">2. Thời gian hẹn &amp; Địa chỉ phục vụ</h2>
-              <p class="field-hint">Xác nhận thời gian bắt đầu và địa chỉ nhà để hệ thống kiểm tra thợ trong khu vực</p>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+              <div>
+                <h2 class="panel-title" style="font-size:1.35rem;">2. Thời gian hẹn &amp; Địa chỉ phục vụ</h2>
+                <p class="field-hint">Xác nhận thời gian bắt đầu và địa chỉ nhà để hệ thống kiểm tra thợ trong khu vực</p>
+              </div>
+              ${
+                cust && (cust.default_address || cust.ward_id)
+                  ? `
+                <span class="badge badge-positive" style="font-size:0.75rem; padding:4px 10px; display:inline-flex; align-items:center; gap:6px;">
+                  <span class="status-dot is-online" style="width:7px; height:7px;"></span>
+                  Đã tự động điền từ Hồ sơ cá nhân
+                </span>`
+                  : ''
+              }
             </div>
 
             <div class="form-row-2">
@@ -2822,10 +3665,19 @@ window.GDXApp = (() => {
                 </select>
               </div>
               <div class="field-group">
-                <label class="field-label" for="wizAddress">Số nhà, tòa căn hộ chi tiết (bookings.address)</label>
-                <input type="text" id="wizAddress" class="input" value="${cust ? cust.default_address : 'Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng'}" required>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <label class="field-label" for="wizAddress" style="margin-bottom:0;">Số nhà, tòa căn hộ chi tiết (bookings.address)</label>
+                  <button type="button" class="btn btn-secondary btn-sm" style="padding:2px 8px; font-size:11px; height:24px;" onclick="GDXApp.locateUserGPS('wizLat', 'wizLng', null, 'wizAddress', 'wizProvSelect', 'wizWardSelect')" title="Tự động nhận diện số nhà, tên đường qua GPS">
+                    ${Icons.pin()} Nhận diện từ GPS
+                  </button>
+                </div>
+                <input type="text" id="wizAddress" class="input" value="${defaultAddressValue}" placeholder="Ví dụ: KTX Khu A, Đường Tạ Quang Bửu" required>
               </div>
             </div>
+
+            <!-- Tọa độ định vị GPS ẩn lấy từ hồ sơ khách hàng phục vụ tính khoảng cách -->
+            <input type="hidden" id="wizLat" value="${cust && cust.latitude ? cust.latitude : 10.741205}">
+            <input type="hidden" id="wizLng" value="${cust && cust.longitude ? cust.longitude : 106.702110}">
 
             <div class="field-group">
               <label class="field-label" for="wizNotes">Ghi chú dặn dò đối tác thợ (bookings.notes)</label>
@@ -2833,67 +3685,120 @@ window.GDXApp = (() => {
             </div>
           </div>
 
-          <!-- Step 4: Select Verified Provider -->
+          <!-- Step 3: Select Provider Mode (Broadcast vs Direct) -->
           <div class="wizard-main-content form-stack">
             <div class="panel-header" style="margin-bottom:0;">
               <div>
-                <h2 class="panel-title" style="font-size:1.35rem;">3. Chọn Đối tác Thợ thực hiện (${eligibleProviders.length} thợ sẵn sàng)</h2>
-                <p class="field-hint">Đã đối chiếu lịch làm việc cố định (availability_schedules) và khu vực Phường/Xã đăng ký (provider_areas)</p>
+                <h2 class="panel-title" style="font-size:1.35rem;">3. Lựa chọn Đối tác Thợ thực hiện</h2>
+                <p class="field-hint">Chọn rải đơn để nhận việc nhanh nhất hoặc tự tay chỉ định một đối tác thợ cụ thể</p>
               </div>
             </div>
 
-            <div class="form-stack" style="gap:12px;">
-              ${
-                eligibleProviders.length > 0
-                  ? eligibleProviders
-                      .map((p) => {
-                        const fullProv = (db.provider_profiles || []).find((fp) => fp.provider_id === p.provider_id);
-                        const distKm =
-                          cust && fullProv
-                            ? calcDistanceKm(cust.latitude, cust.longitude, fullProv.lattitude, fullProv.longtitude)
-                            : '1.4';
-                        const schedules = (db.availability_schedules || []).filter((a) => a.provider_id === p.provider_id);
-                        const exceptions = (db.availability_exceptions || []).filter((e) => e.provider_id === p.provider_id);
-                        const isSelected = selectedProv && selectedProv.provider_id === p.provider_id;
+            <!-- Provider Mode Selector (2 Options) -->
+            <div class="provider-mode-grid">
+              <div class="provider-mode-card ${state.wizardProviderMode !== 'direct' ? 'is-selected' : ''}" onclick="GDXApp.setWizardProviderMode('broadcast')">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:1.4rem;">⚡</span>
+                    <strong style="font-family:var(--font-heading); font-size:1.0625rem; color:var(--color-secondary);">Rải đơn cho tất cả Đối tác khả dụng</strong>
+                  </div>
+                  <span class="badge badge-positive">Khuyên dùng</span>
+                </div>
+                <p class="field-hint" style="margin-top:2px;">
+                  Hệ thống tự động phát thông báo tới <strong>Hòm thư nhận việc</strong> của toàn bộ đối tác thợ đã xác minh CCCD quanh khu vực nhà bạn. Đối tác nào xác nhận trước sẽ được giao ca làm ngay.
+                </p>
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.8125rem; color:var(--color-primary); font-weight:600; margin-top:4px;">
+                  ✓ Tối ưu thời gian chờ · Thợ nhận việc nhanh nhất
+                </div>
+              </div>
 
-                        return `
-                        <div class="choice-card ${isSelected ? 'is-selected' : ''}" style="justify-content:space-between; align-items:center; flex-wrap:wrap;" onclick="GDXApp.selectBookingProvider(${p.provider_id})">
-                          <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">
-                            <img src="${p.avatar_url || 'assets/provider-lan.jpg'}" alt="${p.full_name}" class="provider-avatar-lg">
-                            <div>
-                              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                <strong style="font-family:var(--font-heading); font-size:1.0625rem;">${p.full_name}</strong>
-                                <span class="star-rating num">${Icons.star(true)} ${Number(p.average_rating || 5).toFixed(2)}</span>
-                                <span class="field-hint">(${p.total_reviews || 0} đánh giá)</span>
-                                <span class="badge badge-positive">Cách nhà bạn ~${distKm} km</span>
-                              </div>
-                              <div class="field-hint" style="margin-top:4px;">${p.info || 'Thợ kỹ thuật đạt chuẩn Gia Đình Xanh'}</div>
-                              <div class="field-hint" style="margin-top:4px;">
-                                Khung giờ làm việc: <strong>${schedules.length > 0 ? `${schedules[0].start_time} – ${schedules[0].end_time}` : '08:00 – 18:00'}</strong>
-                                ${exceptions.length > 0 ? ` · Lưu ý: Nghỉ phép ngày ${exceptions[0].exception_date}` : ''}
+              <div class="provider-mode-card ${state.wizardProviderMode === 'direct' ? 'is-selected' : ''}" onclick="GDXApp.setWizardProviderMode('direct')">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:1.4rem;">👤</span>
+                    <strong style="font-family:var(--font-heading); font-size:1.0625rem; color:var(--color-secondary);">Tự chọn Đối tác Thợ cụ thể</strong>
+                  </div>
+                  <span class="badge badge-neutral">Chỉ định riêng</span>
+                </div>
+                <p class="field-hint" style="margin-top:2px;">
+                  Chủ động duyệt danh sách hồ sơ thợ lành nghề, đối chiếu khoảng cách địa lý, lịch trình làm việc và số sao đánh giá để chọn thợ ưng ý nhất.
+                </p>
+                <div style="display:flex; align-items:center; gap:6px; font-size:0.8125rem; color:var(--color-primary); font-weight:600; margin-top:4px;">
+                  ✓ Thích hợp khi muốn đặt thợ quen hoặc thợ nhiều sao
+                </div>
+              </div>
+            </div>
+
+            ${
+              state.wizardProviderMode === 'direct'
+                ? `
+              <div class="form-stack" style="gap:12px; margin-top:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <strong style="font-size:0.9375rem; color:var(--color-secondary);">Danh sách Đối tác Thợ sẵn sàng phục vụ (${eligibleProviders.length} thợ)</strong>
+                  <span class="field-hint">Đã lọc theo kỹ năng dịch vụ &amp; khu vực hoạt động</span>
+                </div>
+                ${
+                  eligibleProviders.length > 0
+                    ? eligibleProviders
+                        .map((p) => {
+                          const fullProv = (db.provider_profiles || []).find((fp) => fp.provider_id === p.provider_id);
+                          const distKm =
+                            cust && fullProv
+                              ? calcDistanceKm(cust.latitude, cust.longitude, fullProv.lattitude, fullProv.longtitude)
+                              : '1.4';
+                          const schedules = (db.availability_schedules || []).filter((a) => a.provider_id === p.provider_id);
+                          const exceptions = (db.availability_exceptions || []).filter((e) => e.provider_id === p.provider_id);
+                          const isSelected = selectedProv && selectedProv.provider_id === p.provider_id;
+
+                          return `
+                          <div class="choice-card ${isSelected ? 'is-selected' : ''}" style="justify-content:space-between; align-items:center; flex-wrap:wrap;" onclick="GDXApp.selectBookingProvider(${p.provider_id})">
+                            <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">
+                              <img src="${p.avatar_url || 'assets/provider-lan.jpg'}" alt="${p.full_name}" class="provider-avatar-lg">
+                              <div>
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                  <strong style="font-family:var(--font-heading); font-size:1.0625rem;">${p.full_name}</strong>
+                                  <span class="star-rating num">${Icons.star(true)} ${Number(p.average_rating || 5).toFixed(2)}</span>
+                                  <span class="field-hint">(${p.total_reviews || 0} đánh giá)</span>
+                                  <span class="badge badge-positive">Cách nhà bạn ~${distKm} km</span>
+                                </div>
+                                <div class="field-hint" style="margin-top:4px;">${p.info || 'Thợ kỹ thuật đạt chuẩn Gia Đình Xanh'}</div>
+                                <div class="field-hint" style="margin-top:4px;">
+                                  Khung giờ làm việc: <strong>${schedules.length > 0 ? `${schedules[0].start_time} – ${schedules[0].end_time}` : '08:00 – 18:00'}</strong>
+                                  ${exceptions.length > 0 ? ` · Lưu ý: Nghỉ phép ngày ${exceptions[0].exception_date}` : ''}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div style="display:flex; gap:8px; align-items:center;">
-                            <button type="button" class="ghost-btn btn-sm" onclick="event.stopPropagation(); GDXApp.openModal('1.7', {providerId: ${p.provider_id}})">
-                              Xem lịch &amp; Hồ sơ
-                            </button>
-                            <span class="badge ${isSelected ? 'badge-positive' : 'badge-neutral'}">
-                              ${isSelected ? '✓ Đã chọn' : 'Chọn thợ'}
-                            </span>
-                          </div>
-                        </div>`;
-                      })
-                      .join('')
-                  : `
-                  <div class="empty-state-card">
-                    <strong style="display:block; font-size:1.05rem; margin-bottom:6px;">Hệ thống tự động phân bổ Đối tác Thợ</strong>
-                    <p class="field-hint" style="max-width:540px; margin:0 auto;">
-                      Hiện chưa có thợ chỉ định sẵn trong ca này. Khi bạn xác nhận đặt lịch, yêu cầu sẽ được chuyển tới các đối tác thợ đã xác minh CCCD gần khu vực của bạn nhất để nhận ca ngay.
-                    </p>
-                  </div>`
-              }
-            </div>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                              <button type="button" class="ghost-btn btn-sm" onclick="event.stopPropagation(); GDXApp.openModal('1.7', {providerId: ${p.provider_id}})">
+                                Xem lịch &amp; Hồ sơ
+                              </button>
+                              <span class="badge ${isSelected ? 'badge-positive' : 'badge-neutral'}">
+                                ${isSelected ? '✓ Đã chọn' : 'Chọn thợ này'}
+                              </span>
+                            </div>
+                          </div>`;
+                        })
+                        .join('')
+                    : `
+                    <div class="empty-state-card">
+                      <strong style="display:block; font-size:1.05rem; margin-bottom:6px;">Chưa có thợ trực tiếp sẵn sàng tại khung giờ này</strong>
+                      <p class="field-hint" style="max-width:540px; margin:0 auto;">
+                        Bạn có thể chuyển sang tùy chọn <strong>"Rải đơn cho tất cả Đối tác khả dụng"</strong> để hệ thống tự động tìm kiếm thợ nhận việc ngay.
+                      </p>
+                    </div>`
+                }
+              </div>`
+                : `
+              <div class="panel-subtle" style="display:flex; align-items:center; gap:16px; padding:16px 20px; border-radius:12px; background:#f0fdf4; border:1px solid #bbf7d0;">
+                <span style="font-size:1.8rem; flex-shrink:0;">⚡</span>
+                <div>
+                  <strong style="display:block; color:#166534; font-size:0.95rem; margin-bottom:2px;">Đang chọn chế độ: Rải đơn toàn mạng lưới thợ</strong>
+                  <p class="field-hint" style="margin:0; color:#15803d;">
+                    Ngay khi bạn nhấn "Hoàn tất &amp; Đặt lịch hẹn", đơn yêu cầu sẽ xuất hiện đồng thời trong <strong>Hòm thư Nhận việc</strong> của tất cả đối tác thợ quanh khu vực của bạn. Thợ nhận việc đầu tiên sẽ phụ trách ca làm của bạn.
+                  </p>
+                </div>
+              </div>`
+            }
           </div>
         </div>
 
@@ -2906,7 +3811,7 @@ window.GDXApp = (() => {
             </div>
 
             <div style="display:flex; gap:12px; align-items:center; padding-bottom:16px; margin-bottom:12px; border-bottom:1px solid var(--color-border);">
-              <img src="${svc.image_url || 'assets/service-cleaning.jpg'}" alt="${svc.title}" style="width:68px; height:52px; border-radius:10px; object-fit:cover;">
+              <img src="${getServiceImage(svc)}" alt="${svc.title}" style="width:68px; height:52px; border-radius:10px; object-fit:cover;">
               <div>
                 <div style="font-family:var(--font-heading); font-weight:700; font-size:0.9375rem;">${svc.title}</div>
                 <div class="field-hint">${svc.pricing_type === 'hourly' ? `${state.bookingHours} giờ × ${formatMoney(svc.price)}` : `Trọn gói ~${svc.estimated_duration} phút`}</div>
@@ -2914,9 +3819,9 @@ window.GDXApp = (() => {
             </div>
 
             <div class="slip-row">
-              <span class="field-hint">Đối tác phụ trách</span>
+              <span class="field-hint">Hình thức phân bổ</span>
               <span class="slip-dots"></span>
-              <strong>${selectedProv ? selectedProv.full_name : 'Chưa chọn'}</strong>
+              <strong>${state.wizardProviderMode === 'direct' && selectedProv ? selectedProv.full_name : '⚡ Rải đơn toàn mạng lưới thợ'}</strong>
             </div>
             <div class="slip-row">
               <span class="field-hint">Đơn giá dịch vụ</span>
@@ -2947,7 +3852,7 @@ window.GDXApp = (() => {
             <ul style="margin-top:18px; display:flex; flex-direction:column; gap:8px;">
               <li style="display:flex; align-items:center; gap:8px; font-size:0.8125rem; color:var(--color-muted);">
                 <span style="color:var(--color-primary); font-weight:700;">✓</span>
-                100% đối tác thợ đã đối chiếu CCCD
+                Đối tác thợ đã đối chiếu CCCD rõ ràng
               </li>
               <li style="display:flex; align-items:center; gap:8px; font-size:0.8125rem; color:var(--color-muted);">
                 <span style="color:var(--color-primary); font-weight:700;">✓</span>
@@ -2964,12 +3869,37 @@ window.GDXApp = (() => {
     `;
   }
 
+  function setWizardCategory(catId) {
+    state.wizardCategory = catId;
+    const db = window.GDX_DB;
+    const activeServices = (db.services || []).filter((s) => {
+      if (!s.is_active) return false;
+      const t = (s.title || '').toLowerCase();
+      if (t.includes('repair') || t.includes('sửa') || t.includes('appliance')) return false;
+      return true;
+    });
+    const match = activeServices.find((s) => catId === '2' ? isCookingService(s) : !isCookingService(s));
+    if (match) {
+      state.selectedServiceId = match.service_id;
+    }
+    go('1.2');
+  }
+
+  function setWizardProviderMode(mode) {
+    state.wizardProviderMode = mode;
+    if (mode === 'broadcast') {
+      state.selectedProviderId = null;
+    }
+    go('1.2');
+  }
+
   function setBookingHours(h) {
     state.bookingHours = h;
     go('1.2');
   }
 
   function selectBookingProvider(providerId) {
+    state.wizardProviderMode = 'direct';
     state.selectedProviderId = providerId;
     go('1.2');
   }
@@ -2982,6 +3912,10 @@ window.GDXApp = (() => {
       showToast('Vui lòng đăng ký hoặc đăng nhập để tiếp tục đặt lịch.');
       switchPortal(0, '0.1');
       return;
+    }
+    let cust = getActiveCustomerProfile();
+    if (!state.activeCustomerId && cust) {
+      state.activeCustomerId = cust.customer_id;
     }
     if (!state.activeCustomerId) {
       showToast('Vui lòng hoàn tất thông tin hồ sơ khách hàng trước.');
@@ -2999,15 +3933,24 @@ window.GDXApp = (() => {
     const wardEl = document.getElementById('wizWardSelect');
     const addrEl = document.getElementById('wizAddress');
     const notesEl = document.getElementById('wizNotes');
+    const latEl = document.getElementById('wizLat');
+    const lngEl = document.getElementById('wizLng');
 
     const totalAmount = svc.pricing_type === 'hourly' ? svc.price * state.bookingHours : svc.price;
     const existingIds = (db.bookings || []).map((b) => b.booking_id || 0);
     const newId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1001;
 
+    const chosenLat = latEl && latEl.value ? Number(latEl.value) : (cust && cust.latitude ? Number(cust.latitude) : 10.741205);
+    const chosenLng = lngEl && lngEl.value ? Number(lngEl.value) : (cust && cust.longitude ? Number(cust.longitude) : 106.702110);
+
+    const isBroadcast = state.wizardProviderMode !== 'direct';
+    const chosenProviderId = isBroadcast ? null : (state.selectedProviderId || 201);
+
     const newBooking = {
       booking_id: newId,
       customer_id: state.activeCustomerId,
-      provider_id: state.selectedProviderId || null,
+      provider_id: chosenProviderId,
+      dispatch_type: isBroadcast ? 'broadcast' : 'direct',
       service_id: svc.service_id,
       booking_time: new Date().toISOString(),
       scheduled_time: schedEl && schedEl.value ? new Date(schedEl.value).toISOString() : new Date().toISOString(),
@@ -3016,10 +3959,10 @@ window.GDXApp = (() => {
       total_incidental: 0,
       incidental_Specify: null,
       total_amount: totalAmount,
-      address: addrEl && addrEl.value ? addrEl.value : 'Địa chỉ theo hồ sơ',
-      ward_id: wardEl && wardEl.value ? wardEl.value : '27403',
-      latitude: 10.72951,
-      longitude: 106.7218,
+      address: addrEl && addrEl.value ? addrEl.value.trim() : (cust ? cust.default_address : 'Địa chỉ theo hồ sơ'),
+      ward_id: wardEl && wardEl.value ? wardEl.value : (cust ? cust.ward_id : '27403'),
+      latitude: chosenLat,
+      longitude: chosenLng,
       notes: notesEl ? notesEl.value : ''
     };
 
@@ -3044,7 +3987,11 @@ window.GDXApp = (() => {
     });
 
     state.selectedBookingId = realBooking.booking_id;
-    showToast(`Đã tạo đơn đặt lịch #${realBooking.booking_id} thành công!`);
+    if (isBroadcast) {
+      showToast(`Đã phát đơn #${realBooking.booking_id} tới Hòm thư nhận việc của tất cả thợ trong khu vực!`);
+    } else {
+      showToast(`Đã tạo đơn #${realBooking.booking_id} và gửi thông báo trực tiếp tới Đối tác thợ!`);
+    }
     go('1.3', { bookingId: realBooking.booking_id });
   }
 
@@ -3474,6 +4421,25 @@ window.GDXApp = (() => {
                 <input type="text" id="profAddress" name="default_address" class="input" value="${cust.default_address || ''}" required>
               </div>
 
+              <div class="field-group">
+                <label class="field-label" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>Vị trí trên bản đồ tương tác (Leaflet &bull; OpenStreetMap)</span>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.locateUserGPS('profLat', 'profLng', 'profCoordText', 'profAddress', 'profProv', 'profWard')">
+                    ${Icons.pin()} Định vị GPS &amp; Nhận diện địa chỉ
+                  </button>
+                </label>
+                <div class="geo-map-card">
+                  <div id="customerProfileMap" class="geo-map-container" style="height:240px;" tabindex="0"></div>
+                  <div class="geo-map-footer">
+                    <div>
+                      <span>Tọa độ đã chọn:</span>
+                      <span id="profCoordText" class="geo-coords-tag">${cust.latitude || 10.7769}, ${cust.longitude || 106.7009}</span>
+                    </div>
+                    <span class="field-hint" style="margin:0;">Kéo ghim hoặc bấm vào bản đồ để tự động nhận diện số nhà</span>
+                  </div>
+                </div>
+              </div>
+
               <div class="form-row-2">
                 <div class="field-group">
                   <label class="field-label" for="profLat">Vĩ độ (latitude)</label>
@@ -3519,34 +4485,79 @@ window.GDXApp = (() => {
         </div>
       </div>
     `;
+
+    // Khởi tạo bản đồ tương tác cho màn hình hồ sơ
+    initCustomerLocationPicker({
+      containerId: 'customerProfileMap',
+      lat: Number(cust.latitude || 10.7769),
+      lng: Number(cust.longitude || 106.7009),
+      zoom: 15,
+      latInputId: 'profLat',
+      lngInputId: 'profLng',
+      coordTextId: 'profCoordText',
+      addrInputId: 'profAddress',
+      provSelectId: 'profProv',
+      wardSelectId: 'profWard'
+    });
   }
 
-  function saveCustomerProfile(form) {
-    const u = (window.GDX_DB.users || []).find((x) => x.user_id === state.activeUserId);
-    const cust = (window.GDX_DB.customer_profiles || []).find((c) => c.customer_id === state.activeCustomerId);
+  async function saveCustomerProfile(form) {
+    const u = (window.GDX_DB.users || []).find((x) => String(x.user_id) === String(state.activeUserId));
+    let cust = getActiveCustomerProfile();
+    const wardId = form.ward_id.value;
+    const defaultAddress = form.default_address.value.trim();
+    const lat = Number(form.latitude.value);
+    const lng = Number(form.longitude.value);
+
     if (u) {
-      u.full_name = form.full_name.value;
-      u.phone_number = form.phone_number.value;
+      u.full_name = form.full_name.value.trim();
+      u.phone_number = form.phone_number.value.trim();
     }
     if (cust) {
-      cust.ward_id = form.ward_id.value;
-      cust.default_address = form.default_address.value;
-      cust.latitude = Number(form.latitude.value);
-      cust.longitude = Number(form.longitude.value);
+      cust.ward_id = wardId;
+      cust.default_address = defaultAddress;
+      cust.latitude = lat;
+      cust.longitude = lng;
+    } else {
+      cust = {
+        customer_id: state.activeCustomerId || 101,
+        user_id: state.activeUserId,
+        ward_id: wardId,
+        default_address: defaultAddress,
+        latitude: lat,
+        longitude: lng,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      window.GDX_DB.customer_profiles = window.GDX_DB.customer_profiles || [];
+      window.GDX_DB.customer_profiles.push(cust);
     }
-    apiRequest('/api/customer/profile', {
+
+    // Đồng bộ ngay lập tức vào state.wizardDraft
+    state.wizardDraft.ward_id = wardId;
+    state.wizardDraft.address = defaultAddress;
+    state.wizardDraft.latitude = lat;
+    state.wizardDraft.longitude = lng;
+
+    const res = await apiRequest('/api/customer/profile', {
       method: 'PUT',
       body: JSON.stringify({
         user_id: state.activeUserId,
-        customer_id: state.activeCustomerId,
-        full_name: form.full_name.value,
-        phone_number: form.phone_number.value,
-        ward_id: form.ward_id.value,
-        default_address: form.default_address.value,
-        latitude: Number(form.latitude.value),
-        longitude: Number(form.longitude.value)
+        customer_id: state.activeCustomerId || (cust && cust.customer_id),
+        full_name: form.full_name.value.trim(),
+        phone_number: form.phone_number.value.trim(),
+        ward_id: wardId,
+        default_address: defaultAddress,
+        latitude: lat,
+        longitude: lng
       })
     });
+
+    if (res && res.customer_profile) {
+      if (cust) Object.assign(cust, res.customer_profile);
+      state.activeCustomerId = res.customer_profile.customer_id;
+    }
+
     showToast('Đã cập nhật hồ sơ & địa chỉ mặc định!');
     go('1.5');
   }
@@ -3616,25 +4627,51 @@ window.GDXApp = (() => {
   // SCREEN RENDERERS: PHÂN HỆ 2 (PROVIDER PORTAL: 2.1 – 2.4)
   // =====================================================================
 
-  // 2.1: Sàn nhận việc làm (Job Board)
+  // 2.1: Hòm thư nhận việc làm (Job Inbox & Dispatch Board)
   function renderScreen_2_1(container) {
     const db = window.GDX_DB;
-    const prov = db.provider_profiles.find((p) => p.provider_id === state.activeProviderId) || db.provider_profiles[0];
-    const pendingJobs = db.bookings.filter((b) => b.status === 'pending');
-    const activeJob = db.bookings.find(
-      (b) => b.provider_id === state.activeProviderId && (b.status === 'in_progress' || b.status === 'confirmed')
+    const prov = (db.provider_profiles || []).find((p) => p.provider_id === state.activeProviderId) || (db.provider_profiles || [])[0] || {
+      provider_id: 201,
+      full_name: 'Đặng Thị Mai Lan',
+      lattitude: 10.7412,
+      longtitude: 106.7021,
+      is_available_online: true
+    };
+
+    state.inboxTab = state.inboxTab || 'available';
+    state.expiredJobIds = state.expiredJobIds || [];
+    state.dismissedJobIds = state.dismissedJobIds || [];
+
+    const activeJob = (db.bookings || []).find(
+      (b) => b.provider_id === prov.provider_id && (b.status === 'in_progress' || b.status === 'confirmed')
     );
 
-    const filteredJobs = pendingJobs.filter((b) => {
+    // Việc khả dụng trong hộp thư
+    const availableJobs = (db.bookings || []).filter((b) => {
+      if (b.status !== 'pending') return false;
+      if (state.expiredJobIds.includes(b.booking_id)) return false;
+      if (state.dismissedJobIds.includes(b.booking_id)) return false;
+      if (b.provider_id !== null && b.provider_id !== undefined && b.provider_id !== prov.provider_id && b.dispatch_type !== 'broadcast') {
+        return false;
+      }
       if (state.jobBoardFilter.wardId !== 'all' && b.ward_id !== state.jobBoardFilter.wardId) return false;
       return true;
+    });
+
+    // Việc đã hết hạn (do đối tác khác nhận trước hoặc bị hết hiệu lực)
+    const expiredJobs = (db.bookings || []).filter((b) => {
+      if (state.expiredJobIds.includes(b.booking_id)) return true;
+      if (b.status === 'confirmed' && b.provider_id && b.provider_id !== prov.provider_id) {
+        return true;
+      }
+      return false;
     });
 
     container.innerHTML = `
       <div class="screen-header">
         <div>
-          <h1 class="screen-title">2.1. Sàn nhận việc làm trong khu vực (${filteredJobs.length} đơn mới)</h1>
-          <p class="screen-finding">Bảng: bookings (status = 'pending'), customer_profiles, services, ward.</p>
+          <h1 class="screen-title">2.1. Hòm thư Nhận việc &amp; Điều phối Ca làm</h1>
+          <p class="screen-finding">Bảng: bookings (pending/confirmed), customer_profiles, services, ward · Cơ chế khóa tranh chấp (First-come Expired).</p>
         </div>
         <div class="screen-actions">
           <span class="badge ${prov.is_available_online ? 'badge-positive' : 'badge-neutral'}">
@@ -3661,79 +4698,176 @@ window.GDXApp = (() => {
           : ''
       }
 
-      <div class="filter-toolbar">
-        <div class="filter-chips">
-          <button type="button" class="filter-chip" aria-pressed="${state.jobBoardFilter.wardId === 'all'}" onclick="GDXApp.setJobBoardWard('all')">
-            Tất cả Phường đã đăng ký (${pendingJobs.length})
-          </button>
-          ${db.ward
-            .slice(0, 4)
-            .map(
-              (w) => `
-            <button type="button" class="filter-chip" aria-pressed="${state.jobBoardFilter.wardId === w.ward_id}" onclick="GDXApp.setJobBoardWard('${w.ward_id}')">
-              ${w.name.replace('Phường ', 'P. ')}
-            </button>`
-            )
-            .join('')}
+      <!-- Inbox Navigation Tabs (Taste & Impeccable) -->
+      <div class="inbox-nav-tabs" role="tablist">
+        <button type="button" class="inbox-nav-tab ${state.inboxTab === 'available' ? 'is-active' : ''}" onclick="GDXApp.setInboxTab('available')">
+          📥 Hộp thư đến (Việc chờ nhận)
+          <span class="inbox-tab-badge">${availableJobs.length}</span>
+        </button>
+        <button type="button" class="inbox-nav-tab ${state.inboxTab === 'expired' ? 'is-active' : ''}" onclick="GDXApp.setInboxTab('expired')">
+          ⏳ Đơn đã hết hạn / Đã có người nhận (Expired)
+          <span class="inbox-tab-badge">${expiredJobs.length}</span>
+        </button>
+      </div>
+
+      ${
+        state.inboxTab === 'available'
+          ? `
+        <div class="filter-toolbar">
+          <div class="filter-chips">
+            <button type="button" class="filter-chip" aria-pressed="${state.jobBoardFilter.wardId === 'all'}" onclick="GDXApp.setJobBoardWard('all')">
+              Tất cả Phường đã đăng ký (${availableJobs.length})
+            </button>
+            ${(db.ward || [])
+              .slice(0, 4)
+              .map(
+                (w) => `
+              <button type="button" class="filter-chip" aria-pressed="${state.jobBoardFilter.wardId === w.ward_id}" onclick="GDXApp.setJobBoardWard('${w.ward_id}')">
+                ${w.name.replace('Phường ', 'P. ')}
+              </button>`
+              )
+              .join('')}
+          </div>
         </div>
-      </div>
 
-      <div class="form-stack">
-        ${
-          filteredJobs.length === 0
-            ? `<div class="panel" style="text-align:center; padding:32px;">
-                <strong>Hiện chưa có đơn chờ nhận mới tại khu vực này</strong>
-                <p class="field-hint" style="margin-top:4px;">Hãy chọn "Tất cả Phường đã đăng ký" hoặc giữ trạng thái trực tuyến để nhận thông báo đơn mới.</p>
-              </div>`
-            : filteredJobs
-                .map((b) => {
-                  const svc = db.services.find((s) => s.service_id === b.service_id);
-                  const w = db.ward.find((x) => x.ward_id === b.ward_id);
-                  const distKm = calcDistanceKm(prov.lattitude, prov.longtitude, b.latitude, b.longitude);
+        <div class="form-stack">
+          ${
+            availableJobs.length === 0
+              ? `<div class="panel" style="text-align:center; padding:36px 24px;">
+                  <div style="font-size:2rem; margin-bottom:8px;">📬</div>
+                  <strong style="font-size:1.0625rem; display:block; margin-bottom:4px;">Hòm thư hiện không có đơn việc mới</strong>
+                  <p class="field-hint" style="max-width:440px; margin:0 auto 16px auto;">
+                    Các đơn rải chung từ khách hàng và yêu cầu chỉ định riêng sẽ tự động xuất hiện tại đây ngay khi có phát sinh.
+                  </p>
+                  <button type="button" class="ghost-btn btn-sm" onclick="GDXApp.go('1.2')">Tạo thử một đơn đặt lịch mới &rarr;</button>
+                </div>`
+              : availableJobs
+                  .map((b) => {
+                    const svc = (db.services || []).find((s) => s.service_id === b.service_id);
+                    const w = (db.ward || []).find((x) => x.ward_id === b.ward_id);
+                    const distKm = calcDistanceKm(prov.lattitude || 10.7412, prov.longtitude || 106.7021, b.latitude || 10.7412, b.longitude || 106.7021);
+                    const isBroadcast = !b.provider_id || b.dispatch_type === 'broadcast' || (b.notes && b.notes.includes('[BROADCAST'));
 
-                  return `
-                  <article class="panel" style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;">
-                    <div style="flex:1; min-width:260px;">
-                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <span class="badge badge-warning">Đơn mới #${b.booking_id}</span>
-                        <strong style="font-size:16px;">${svc ? svc.title : 'Dịch vụ'}</strong>
-                        <span class="badge badge-info">${Icons.pin()} Cách bạn ~${distKm} km</span>
-                        <span class="badge badge-neutral">${w ? w.name : ''}</span>
-                      </div>
-                      <div style="margin-top:8px; font-size:13.5px;">
-                        <strong>Thời gian hẹn:</strong> <span class="num">${formatDateTime(b.scheduled_time)}</span> · <strong>Thời lượng:</strong> ~${svc ? svc.estimated_duration : 120} phút
-                      </div>
-                      <div class="field-hint" style="margin-top:3px;">
-                        <strong>Địa chỉ khách hàng:</strong> ${b.address}
-                      </div>
-                      ${
-                        b.notes
-                          ? `<div class="panel-subtle" style="margin-top:8px; padding:8px 12px; font-size:13px;">
-                              <strong>Ghi chú của khách:</strong> "${b.notes}"
-                            </div>`
-                          : ''
-                      }
-                    </div>
+                    return `
+                    <article class="job-inbox-card">
+                      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:260px;">
+                          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                            ${
+                              isBroadcast
+                                ? `<span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">⚡ Đơn phát toàn khu vực (Rải đơn)</span>`
+                                : `<span class="badge" style="background:#ecfdf5; color:#047857; font-weight:700;">⭐ Khách hàng chỉ định đích danh bạn</span>`
+                            }
+                            <span class="badge badge-warning">Đơn mới #${b.booking_id}</span>
+                            <span class="badge badge-info">${Icons.pin()} Cách bạn ~${distKm} km</span>
+                            <span class="badge badge-neutral">${w ? w.name : ''}</span>
+                          </div>
 
-                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
-                      <div style="text-align:right;">
-                        <div class="field-hint">Thu nhập dự kiến</div>
-                        <div class="num" style="font-size:20px; font-weight:600; color:var(--accent);">${formatMoney(b.total_amount)}</div>
+                          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                            <img src="${getServiceImage(svc)}" alt="${svc ? svc.title : 'Dịch vụ'}" style="width:52px; height:42px; border-radius:8px; object-fit:cover;">
+                            <div>
+                              <strong style="font-size:1.0625rem; color:var(--color-secondary);">${svc ? svc.title : 'Dịch vụ'}</strong>
+                              <div class="field-hint">Thời lượng tiêu chuẩn: ~${svc ? svc.estimated_duration : 120} phút</div>
+                            </div>
+                          </div>
+
+                          <div style="font-size:0.875rem; color:var(--color-secondary); margin-bottom:4px;">
+                            <strong>Thời gian hẹn:</strong> <span class="num">${formatDateTime(b.scheduled_time)}</span>
+                          </div>
+                          <div class="field-hint" style="margin-bottom:4px;">
+                            <strong>Địa chỉ khách hàng:</strong> ${b.address}
+                          </div>
+                          ${
+                            b.notes
+                              ? `<div class="panel-subtle" style="margin-top:6px; padding:8px 12px; font-size:13px;">
+                                  <strong>Ghi chú từ khách:</strong> "${b.notes.replace('[BROADCAST_POOL]', '').trim()}"
+                                </div>`
+                              : ''
+                          }
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:12px; min-width:180px;">
+                          <div style="text-align:right;">
+                            <div class="field-hint">Thu nhập ca làm</div>
+                            <div class="num" style="font-size:1.35rem; font-weight:800; color:var(--color-primary);">${formatMoney(b.total_amount)}</div>
+                          </div>
+                          <div style="display:flex; flex-direction:column; gap:6px; width:100%;">
+                            <button type="button" class="primary-btn btn-sm" style="width:100%; min-height:40px;" onclick="GDXApp.acceptJob(${b.booking_id})">
+                              Nhận việc ngay &rarr;
+                            </button>
+                            <div style="display:flex; gap:6px;">
+                              <button type="button" class="ghost-btn btn-sm" style="flex:1;" onclick="GDXApp.dismissJob(${b.booking_id})">
+                                Bỏ qua
+                              </button>
+                              <button type="button" class="btn btn-secondary btn-sm" style="font-size:11px; flex:1; border:1px dashed var(--color-border);" onclick="GDXApp.simulateJobExpired(${b.booking_id})" title="Thử nghiệm tính năng: Giả lập một thợ khác nhận trước">
+                                Thử: Thợ khác nhận
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div style="display:flex; gap:8px;">
-                        <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.showToast('Đã bỏ qua đơn #${b.booking_id}')">
-                          Bỏ qua
-                        </button>
-                        <button type="button" class="btn btn-primary" onclick="GDXApp.acceptJob(${b.booking_id})">
-                          Nhận việc ngay &rarr;
-                        </button>
+                    </article>`;
+                  })
+                  .join('')
+          }
+        </div>`
+          : `
+        <!-- Expired Jobs Tab -->
+        <div class="form-stack">
+          ${
+            expiredJobs.length === 0
+              ? `<div class="panel" style="text-align:center; padding:36px 24px;">
+                  <div style="font-size:2rem; margin-bottom:8px;">⏳</div>
+                  <strong style="font-size:1.0625rem; display:block; margin-bottom:4px;">Không có đơn nào bị hết hạn</strong>
+                  <p class="field-hint" style="max-width:440px; margin:0 auto;">
+                    Khi có đơn rải chung nhưng đã được một đối tác khác bấm nhận trước bạn, đơn sẽ tự động lưu vết tại đây dưới trạng thái Expired.
+                  </p>
+                </div>`
+              : expiredJobs
+                  .map((b) => {
+                    const svc = (db.services || []).find((s) => s.service_id === b.service_id);
+                    const w = (db.ward || []).find((x) => x.ward_id === b.ward_id);
+                    const distKm = calcDistanceKm(prov.lattitude || 10.7412, prov.longtitude || 106.7021, b.latitude || 10.7412, b.longitude || 106.7021);
+
+                    return `
+                    <article class="job-inbox-card is-expired">
+                      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:260px;">
+                          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                            <span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700;">Hết hạn · Đã có người nhận</span>
+                            <span class="badge badge-neutral">Đơn #${b.booking_id}</span>
+                            <span class="badge badge-neutral">${w ? w.name : ''}</span>
+                          </div>
+
+                          <div class="panel-subtle" style="background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; padding:8px 12px; border-radius:8px; font-size:13px; margin-bottom:10px;">
+                            ⚠️ <strong>Thẻ việc đã hết hiệu lực:</strong> Đơn này vừa được một Đối tác Thợ khác trong khu vực xác nhận nhận trước. Yêu cầu đã tự động đóng.
+                          </div>
+
+                          <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                            <img src="${getServiceImage(svc)}" alt="${svc ? svc.title : 'Dịch vụ'}" style="width:52px; height:42px; border-radius:8px; object-fit:cover; opacity:0.7;">
+                            <div>
+                              <strong style="font-size:1rem; color:var(--color-secondary);">${svc ? svc.title : 'Dịch vụ'}</strong>
+                              <div class="field-hint">Địa chỉ: ${b.address} · Hẹn lúc: ${formatDateTime(b.scheduled_time)}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:140px;">
+                          <div style="text-align:right;">
+                            <div class="field-hint">Thu nhập</div>
+                            <div class="num" style="font-size:1.15rem; font-weight:700; color:var(--color-muted); text-decoration:line-through;">${formatMoney(b.total_amount)}</div>
+                          </div>
+                          <button type="button" class="btn btn-secondary btn-sm" disabled style="opacity:0.6; cursor:not-allowed;">
+                            Đã hết hạn
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </article>`;
-                })
-                .join('')
-        }
-      </div>
+                    </article>`;
+                  })
+                  .join('')
+          }
+        </div>`
+      }
     `;
   }
 
@@ -3742,27 +4876,76 @@ window.GDXApp = (() => {
     go('2.1');
   }
 
-  function acceptJob(bookingId) {
+  function setInboxTab(tab) {
+    state.inboxTab = tab;
+    go('2.1');
+  }
+
+  function dismissJob(bookingId) {
+    if (!state.dismissedJobIds) state.dismissedJobIds = [];
+    state.dismissedJobIds.push(bookingId);
+    showToast(`Đã tạm ẩn đơn #${bookingId} khỏi hộp thư.`);
+    go('2.1');
+  }
+
+  function simulateJobExpired(bookingId) {
+    if (!state.expiredJobIds) state.expiredJobIds = [];
+    if (!state.expiredJobIds.includes(bookingId)) state.expiredJobIds.push(bookingId);
     const db = window.GDX_DB;
-    const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    const bk = (db.bookings || []).find((b) => b.booking_id === bookingId);
+    if (bk) {
+      bk.status = 'confirmed';
+      bk.provider_id = 202; // Nguyen Van Tuan took it
+    }
+    showToast(`Mô phỏng: Đơn #${bookingId} vừa được đối tác Nguyễn Văn Tuấn nhận trước! Đơn đã chuyển sang tab Expired.`);
+    state.inboxTab = 'expired';
+    go('2.1');
+  }
+
+  async function acceptJob(bookingId) {
+    const db = window.GDX_DB;
+    const bk = (db.bookings || []).find((b) => b.booking_id === bookingId);
     if (!bk) return;
-    bk.provider_id = state.activeProviderId;
+
+    // Concurrency check via API
+    const res = await apiRequest(`/api/bookings/${bookingId}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({
+        provider_id: state.activeProviderId || 201,
+        user_id: state.activeUserId || 4
+      })
+    });
+
+    if (res && res.expired) {
+      if (!state.expiredJobIds) state.expiredJobIds = [];
+      if (!state.expiredJobIds.includes(bookingId)) state.expiredJobIds.push(bookingId);
+      bk.status = 'confirmed';
+      bk.provider_id = 202; // Taken by another provider
+      showToast('Rất tiếc! Đơn này vừa được một đối tác khác nhận trước ít giây hoặc đã hết hạn.');
+      state.inboxTab = 'expired';
+      go('2.1');
+      return;
+    }
+
+    if (!res || !res.ok) {
+      showToast(res && res.error ? res.error : 'Không thể nhận đơn lúc này.');
+      return;
+    }
+
+    bk.provider_id = state.activeProviderId || 201;
     bk.status = 'confirmed';
+    bk.dispatch_type = 'direct';
     db.booking_status_history.unshift({
       history_id: Date.now(),
       booking_id: bookingId,
       old_status: 'pending',
       new_status: 'confirmed',
       changed_by: 4,
-      reason: 'Đối tác Đặng Thị Mai Lan đã nhận lịch hẹn từ Sàn việc làm',
+      reason: 'Đối tác đã xác nhận nhận việc từ Hòm thư việc làm',
       changed_at: new Date().toISOString()
     });
-    apiRequest(`/api/bookings/${bookingId}/accept`, {
-      method: 'POST',
-      body: JSON.stringify({ provider_id: state.activeProviderId, user_id: 4 })
-    });
     state.selectedBookingId = bookingId;
-    showToast(`Đã nhận đơn #${bookingId}! Chuyển sang màn hình Ca làm việc.`);
+    showToast(`Đã nhận đơn #${bookingId} thành công! Chuyển sang màn hình Ca làm việc.`);
     go('2.2', { bookingId });
   }
 
@@ -4798,12 +5981,13 @@ window.GDXApp = (() => {
     const bk = db.bookings.find((b) => b.booking_id === (params.bookingId || 1042)) || db.bookings[0];
     const svc = db.services.find((s) => s.service_id === bk.service_id);
     const total = bk.total_amount + bk.total_incidental;
+    state.checkoutSelectedPayMethod = 'bank';
 
     el.innerHTML = `
       <div class="modal-header">
         <div>
           <div class="modal-title">1.8. Xác nhận Thanh toán Hóa đơn #${bk.booking_id}</div>
-          <div class="field-hint">Cập nhật bookings.payment_status từ 'unpaid' sang 'paid'</div>
+          <div class="field-hint">Kiểm tra chi phí dịch vụ và chọn phương thức thanh toán</div>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()">✕</button>
       </div>
@@ -4812,15 +5996,15 @@ window.GDXApp = (() => {
           <div class="slip-row">
             <span>Gói dịch vụ</span>
             <span class="slip-dots"></span>
-            <strong>${svc ? svc.title : ''}</strong>
+            <strong>${svc ? svc.title : 'Dịch vụ'}</strong>
           </div>
           <div class="slip-row">
-            <span>Phí dịch vụ cơ bản (total_amount)</span>
+            <span>Phí dịch vụ cơ bản</span>
             <span class="slip-dots"></span>
             <strong class="num">${formatMoney(bk.total_amount)}</strong>
           </div>
           <div class="slip-row">
-            <span>Chi phí vật tư phát sinh (total_incidental)</span>
+            <span>Chi phí vật tư phát sinh</span>
             <span class="slip-dots"></span>
             <strong class="num">${formatMoney(bk.total_incidental)}</strong>
           </div>
@@ -4833,15 +6017,18 @@ window.GDXApp = (() => {
         <div class="field-group">
           <label class="field-label">Chọn phương thức thanh toán</label>
           <div class="choice-grid-2">
-            <label class="choice-card is-selected">
-              <input type="radio" name="payMethod" checked>
+            <label class="choice-card is-selected" id="payMethodBankCard" style="cursor:pointer;" onclick="GDXApp.setCheckoutPayMethod('bank')">
+              <input type="radio" name="payMethod" value="bank" checked>
               <div>
-                <div style="font-weight:600;">Chuyển khoản ngân hàng</div>
-                <div class="field-hint">Xác nhận thanh toán trực tiếp cho đơn #${bk.booking_id}</div>
+                <div style="font-weight:600; display:flex; align-items:center; gap:6px;">
+                  <span>Chuyển khoản VietQR</span>
+                  <span class="badge badge-primary" style="font-size:11px; padding:1px 6px;">Napas 24/7</span>
+                </div>
+                <div class="field-hint">Quét mã QR chuyển khoản tự động qua ngân hàng</div>
               </div>
             </label>
-            <label class="choice-card">
-              <input type="radio" name="payMethod">
+            <label class="choice-card" id="payMethodCashCard" style="cursor:pointer;" onclick="GDXApp.setCheckoutPayMethod('cash')">
+              <input type="radio" name="payMethod" value="cash">
               <div>
                 <div style="font-weight:600;">Tiền mặt khi nghiệm thu</div>
                 <div class="field-hint">Thanh toán trực tiếp sau khi kiểm tra kết quả</div>
@@ -4852,20 +6039,325 @@ window.GDXApp = (() => {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="GDXApp.closeModal()">Để sau</button>
-        <button type="button" class="btn btn-primary" onclick="GDXApp.confirmBookingPayment(${bk.booking_id})">
-          Xác nhận đã thanh toán (${formatMoney(total)}) &rarr;
+        <button type="button" class="btn btn-primary" onclick="GDXApp.submitInvoicePayment(${bk.booking_id})">
+          Xác nhận thanh toán (${formatMoney(total)}) &rarr;
         </button>
       </div>
     `;
   }
 
-  function confirmBookingPayment(bookingId) {
+  function setCheckoutPayMethod(method) {
+    state.checkoutSelectedPayMethod = method;
+    const bCard = document.getElementById('payMethodBankCard');
+    const cCard = document.getElementById('payMethodCashCard');
+    if (bCard && cCard) {
+      if (method === 'bank') {
+        bCard.classList.add('is-selected');
+        cCard.classList.remove('is-selected');
+        const r = bCard.querySelector('input[type="radio"]');
+        if (r) r.checked = true;
+      } else {
+        cCard.classList.add('is-selected');
+        bCard.classList.remove('is-selected');
+        const r = cCard.querySelector('input[type="radio"]');
+        if (r) r.checked = true;
+      }
+    }
+  }
+
+  function submitInvoicePayment(bookingId) {
+    const method = state.checkoutSelectedPayMethod || 'bank';
+    closeModal();
+    if (method === 'bank') {
+      go('1.8', { bookingId, payMethod: 'bank' });
+    } else {
+      confirmBookingPayment(bookingId, 'CASH');
+    }
+  }
+
+  function confirmBookingPayment(bookingId, method = 'CASH') {
     const bk = window.GDX_DB.bookings.find((b) => b.booking_id === bookingId);
     if (bk) bk.payment_status = 'paid';
-    apiRequest(`/api/bookings/${bookingId}/pay`, { method: 'POST' });
+    apiRequest(`/api/bookings/${bookingId}/pay`, {
+      method: 'POST',
+      body: JSON.stringify({ booking_id: bookingId, method, changed_by: state.activeUserId || 1 })
+    });
     closeModal();
-    showToast(`Đã thanh toán hóa đơn #${bookingId} thành công!`);
+    showToast(`Đã ghi nhận thanh toán hóa đơn #${bookingId} thành công!`);
     go(state.currentScreen, { bookingId });
+  }
+
+  let qrTimerInterval = null;
+
+  // 1.8: Trang quét QR Chuyển khoản giả định (VietQR Payment Gateway)
+  function renderScreen_1_8(container, params = {}) {
+    if (qrTimerInterval) {
+      clearInterval(qrTimerInterval);
+      qrTimerInterval = null;
+    }
+
+    const db = window.GDX_DB;
+    const bookingId = Number(params.bookingId) || 1042;
+    const bk = db.bookings.find((b) => b.booking_id === bookingId) || db.bookings[0];
+    const svc = db.services.find((s) => s.service_id === bk.service_id);
+    const total = (bk.total_amount || 0) + (bk.total_incidental || 0);
+    const transferMemo = `GDX${bk.booking_id}`;
+
+    container.innerHTML = `
+      <div class="vietqr-page-container">
+        <!-- Breadcrumb / Back link -->
+        <div style="margin-bottom:16px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.cancelQrPayment(${bk.booking_id})" style="display:inline-flex; align-items:center; gap:6px;">
+            &larr; Quay lại Theo dõi đơn hàng #${bk.booking_id}
+          </button>
+        </div>
+
+        <!-- Header bar -->
+        <div class="vietqr-header-bar">
+          <div class="vietqr-header-left">
+            <span class="vietqr-brand-badge">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              VIETQR · NAPAS 24/7
+            </span>
+            <div>
+              <strong style="font-size:0.95rem; color:var(--color-secondary);">Cổng Thanh toán Trực tuyến VietQR Pro</strong>
+              <div class="field-hint" style="font-size:0.8rem;">Ngân hàng thụ hưởng: Vietcombank (Ngân hàng Ngoại thương Việt Nam)</div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div class="field-hint" style="font-size:0.8rem;">Mã hóa đơn</div>
+            <strong class="num" style="font-size:1.05rem; color:var(--color-primary);">#GDX-${bk.booking_id}</strong>
+          </div>
+        </div>
+
+        <!-- Main QR and Info Grid -->
+        <div class="vietqr-checkout-grid" id="vietqrMainGrid">
+          <!-- Left: QR Code Box -->
+          <div class="vietqr-qr-panel">
+            <div style="font-weight:700; font-size:0.875rem; color:#005baa; margin-bottom:12px; letter-spacing:0.5px;">
+              QUÉT MÃ ĐỂ THANH TOÁN
+            </div>
+
+            <div class="vietqr-frame">
+              <span class="vietqr-frame-corner top-left"></span>
+              <span class="vietqr-frame-corner top-right"></span>
+              <span class="vietqr-frame-corner bottom-left"></span>
+              <span class="vietqr-frame-corner bottom-right"></span>
+              <img src="assets/rickroll-vietqr.svg" alt="Mã VietQR Chuyển khoản" class="vietqr-code-img">
+            </div>
+
+            <div style="font-size:0.8125rem; color:var(--color-muted); line-height:1.45; margin-bottom:8px;">
+              Sử dụng <strong>App Ngân hàng</strong> bất kỳ hoặc Ví <strong>MoMo / ZaloPay</strong> để quét mã QR chuyển khoản nhanh 24/7.
+            </div>
+            <div class="badge badge-neutral" style="font-size:0.75rem;">
+              🔒 Chuẩn thanh toán mã hóa bảo mật
+            </div>
+          </div>
+
+          <!-- Right: Details & Auto-Confirm Countdown -->
+          <div class="vietqr-info-panel">
+            <h2 style="font-size:1.1rem; font-family:var(--font-heading); font-weight:700; margin-bottom:14px; color:var(--color-secondary);">
+              Thông tin chuyển khoản ngân hàng
+            </h2>
+
+            <div class="vietqr-data-list">
+              <div class="vietqr-data-row">
+                <span class="vietqr-data-label">Ngân hàng thụ hưởng</span>
+                <div class="vietqr-data-val">Vietcombank (VCB)</div>
+              </div>
+              <div class="vietqr-data-row">
+                <span class="vietqr-data-label">Chủ tài khoản</span>
+                <div class="vietqr-data-val">CÔNG TY CP DỊCH VỤ GIA ĐÌNH XANH</div>
+              </div>
+              <div class="vietqr-data-row">
+                <span class="vietqr-data-label">Số tài khoản</span>
+                <div class="vietqr-data-val-group">
+                  <span class="vietqr-data-val num" style="letter-spacing:1px; color:#005baa;">0888 668 999</span>
+                  <button type="button" class="vietqr-copy-btn" onclick="GDXApp.copyText('0888668999', this)">Sao chép</button>
+                </div>
+              </div>
+              <div class="vietqr-data-row">
+                <span class="vietqr-data-label">Số tiền thanh toán</span>
+                <div class="vietqr-data-val-group">
+                  <span class="vietqr-data-val num" style="color:var(--color-primary); font-size:1.1rem;">${formatMoney(total)}</span>
+                  <button type="button" class="vietqr-copy-btn" onclick="GDXApp.copyText('${total}', this)">Sao chép</button>
+                </div>
+              </div>
+              <div class="vietqr-data-row">
+                <span class="vietqr-data-label">Nội dung chuyển khoản</span>
+                <div class="vietqr-data-val-group">
+                  <span class="vietqr-data-val num" style="color:#b91c1c;">${transferMemo}</span>
+                  <button type="button" class="vietqr-copy-btn" onclick="GDXApp.copyText('${transferMemo}', this)">Sao chép</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Auto Confirm Countdown Box (10s) -->
+            <div class="vietqr-countdown-box" id="qrCountdownContainer">
+              <div class="vietqr-countdown-header">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="spinner" style="width:16px; height:16px; border:2px solid #bbf7d0; border-top-color:#16a34a; border-radius:50%; animation:spin 0.8s linear infinite;"></span>
+                  <strong style="color:#166534; font-size:0.9rem;">Hệ thống đang chờ giao dịch...</strong>
+                </div>
+                <div style="font-size:0.875rem; color:#15803d;">
+                  Tự động xác nhận sau: <strong id="qrCountdownSec" class="num" style="font-size:1.15rem; color:#166534;">10s</strong>
+                </div>
+              </div>
+              <div class="field-hint" style="margin:0; font-size:0.8rem; color:#15803d;">
+                Sau khi quét mã, hệ thống tự động ghi nhận thanh toán lên cơ sở dữ liệu sau 10 giây.
+              </div>
+              <div class="vietqr-progress-track">
+                <div id="qrProgressBar" class="vietqr-progress-bar" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <button type="button" class="btn btn-primary" style="height:44px; font-weight:700;" onclick="GDXApp.executeQrPaymentSuccess(${bk.booking_id})">
+                ✓ Tôi đã chuyển khoản thành công &rarr;
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.cancelQrPayment(${bk.booking_id})">
+                Đổi phương thức thanh toán / Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success Result (Initially hidden) -->
+        <div id="vietqrSuccessState" class="panel form-stack vietqr-success-card" style="display:none; max-width:600px; margin:20px auto;">
+          <div class="vietqr-success-icon">✓</div>
+          <h2 style="font-size:1.4rem; color:var(--color-primary); font-family:var(--font-heading); margin-bottom:4px;">
+            Thanh toán Thành Công!
+          </h2>
+          <p class="field-hint" style="margin-bottom:16px;">
+            Đã xác nhận giao dịch thanh toán <strong class="num">${formatMoney(total)}</strong> qua Vietcombank Napas 24/7.
+          </p>
+          <div class="panel-subtle" style="font-size:0.875rem; text-align:left; gap:8px;">
+            <div class="slip-row">
+              <span>Mã giao dịch ngân hàng</span>
+              <span class="slip-dots"></span>
+              <strong id="txIdDisplay" class="num">VCB-QR...</strong>
+            </div>
+            <div class="slip-row">
+              <span>Đơn hàng</span>
+              <span class="slip-dots"></span>
+              <strong>#${bk.booking_id} (${svc ? svc.title : ''})</strong>
+            </div>
+            <div class="slip-row">
+              <span>Trạng thái cơ sở dữ liệu</span>
+              <span class="slip-dots"></span>
+              <span class="badge badge-positive">bookings.payment_status = 'paid'</span>
+            </div>
+          </div>
+          <div class="field-hint" style="margin-top:14px;">
+            Đang chuyển về màn hình Theo dõi đơn hàng...
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Start 10-second countdown
+    let remaining = 10;
+    const progressEl = document.getElementById('qrProgressBar');
+    const secEl = document.getElementById('qrCountdownSec');
+
+    qrTimerInterval = setInterval(() => {
+      remaining--;
+      if (secEl) secEl.textContent = `${remaining}s`;
+      if (progressEl) {
+        const pct = ((10 - remaining) / 10) * 100;
+        progressEl.style.width = `${pct}%`;
+      }
+
+      if (remaining <= 0) {
+        clearInterval(qrTimerInterval);
+        qrTimerInterval = null;
+        executeQrPaymentSuccess(bookingId);
+      }
+    }, 1000);
+  }
+
+  async function executeQrPaymentSuccess(bookingId) {
+    if (qrTimerInterval) {
+      clearInterval(qrTimerInterval);
+      qrTimerInterval = null;
+    }
+
+    const db = window.GDX_DB;
+    const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    if (!bk) return;
+
+    const total = (bk.total_amount || 0) + (bk.total_incidental || 0);
+    const txId = 'VCB-QR' + Date.now().toString().slice(-7);
+    const nowIso = new Date().toISOString();
+
+    const mainGrid = document.getElementById('vietqrMainGrid');
+    const successCard = document.getElementById('vietqrSuccessState');
+    const txDisplay = document.getElementById('txIdDisplay');
+    if (mainGrid) mainGrid.style.display = 'none';
+    if (successCard) {
+      successCard.style.display = 'block';
+      if (txDisplay) txDisplay.textContent = txId;
+    }
+
+    bk.payment_status = 'paid';
+    bk.paid_at = nowIso;
+    bk.updated_at = nowIso;
+
+    if (!Array.isArray(db.booking_status_history)) db.booking_status_history = [];
+    db.booking_status_history.unshift({
+      history_id: Date.now(),
+      booking_id: bookingId,
+      previous_status: bk.status,
+      new_status: bk.status,
+      changed_by: state.activeUserId || 1,
+      reason: `[VIETQR AUTO-CONFIRM] Khách hàng quét mã QR chuyển khoản thành công ${formatMoney(total)} (Mã GD: ${txId})`,
+      created_at: nowIso
+    });
+
+    try {
+      await apiRequest(`/api/bookings/${bookingId}/pay`, {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: bookingId,
+          method: 'VIETQR_BANK_TRANSFER',
+          transaction_id: txId,
+          amount: total,
+          changed_by: state.activeUserId || 1
+        })
+      });
+    } catch (err) {
+      console.warn('Payment API record warning:', err);
+    }
+
+    showToast(`🎉 Đã xác nhận thanh toán hóa đơn #${bookingId} thành công qua VietQR!`);
+
+    setTimeout(() => {
+      go('1.3', { bookingId });
+    }, 1800);
+  }
+
+  function cancelQrPayment(bookingId) {
+    if (qrTimerInterval) {
+      clearInterval(qrTimerInterval);
+      qrTimerInterval = null;
+    }
+    go('1.3', { bookingId });
+  }
+
+  function copyText(text, btnEl) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    }
+    if (btnEl) {
+      const orig = btnEl.textContent;
+      btnEl.textContent = '✓ Đã chép';
+      btnEl.style.color = '#16a34a';
+      setTimeout(() => {
+        btnEl.textContent = orig;
+        btnEl.style.color = '';
+      }, 1500);
+    }
   }
 
   // 1.9: Đánh giá & Chấm điểm Thợ
@@ -5743,8 +7235,11 @@ window.GDXApp = (() => {
     showToast,
     toggleProviderOnline,
     refreshProviderGPS,
+    togglePasswordVisibility,
     quickPersonaLogin,
     setAuthTab,
+    setAuthView,
+    handleForgot,
     handleLogin,
     handleRegister,
     handleLogout,
@@ -5759,12 +7254,17 @@ window.GDXApp = (() => {
     setCatalogSearch,
     resetCatalogFilters,
     toggleFavorite,
+    setWizardCategory,
+    setWizardProviderMode,
     setBookingHours,
     selectBookingProvider,
     submitNewBooking,
     setBookingListFilter,
     saveCustomerProfile,
     setJobBoardWard,
+    setInboxTab,
+    dismissJob,
+    simulateJobExpired,
     acceptJob,
     toggleShiftTimer,
     startShiftWork,
@@ -5775,6 +7275,11 @@ window.GDXApp = (() => {
     toggleUserActive,
     deleteReview,
     confirmBookingPayment,
+    setCheckoutPayMethod,
+    submitInvoicePayment,
+    executeQrPaymentSuccess,
+    cancelQrPayment,
+    copyText,
     setReviewStars,
     submitBookingReview,
     confirmCancelBooking,
@@ -5787,6 +7292,8 @@ window.GDXApp = (() => {
     saveCategoryModal,
     saveServiceModal,
     updateSupportTicket,
+    initCustomerLocationPicker,
+    locateUserGPS,
     rpc: RPC,
     RPC
   };

@@ -192,6 +192,172 @@ describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
     assert.ok(res.data.message.includes('Đã khôi phục dữ liệu'));
   });
 
+  test('POST /api/onboarding/customer saves spatial GPS coordinates (latitude, longitude)', async () => {
+    const payload = {
+      user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      full_name: 'Nguyễn Văn Test GPS',
+      phone_number: '0988776655',
+      ward_id: '27403',
+      default_address: 'Tòa nhà Landmark 81, Phường 22, Bình Thạnh',
+      latitude: 10.795123,
+      longitude: 106.721845
+    };
+    const res = await makeRequest('POST', '/api/onboarding/customer', payload);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.ok, true);
+    assert.ok(res.data.customer_profile, 'Returns customer_profile');
+    assert.strictEqual(Number(res.data.customer_profile.latitude), 10.795123);
+    assert.strictEqual(Number(res.data.customer_profile.longitude), 106.721845);
+    assert.strictEqual(res.data.customer_profile.ward_id, '27403');
+  });
+
+  test('PUT /api/profile/customer updates default address and ward seamlessly', async () => {
+    const payload = {
+      customer_id: 101,
+      user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      full_name: 'Nguyễn Minh Thảo Cập Nhật',
+      phone_number: '0901234567',
+      ward_id: '26734',
+      default_address: 'Số 45 Đường Lê Duẩn, Phường Bến Nghé, Quận 1',
+      latitude: 10.779123,
+      longitude: 106.699876
+    };
+    const res = await makeRequest('PUT', '/api/profile/customer', payload);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.ok, true);
+    assert.ok(res.data.customer_profile);
+    assert.strictEqual(res.data.customer_profile.ward_id, '26734');
+    assert.strictEqual(res.data.customer_profile.default_address, 'Số 45 Đường Lê Duẩn, Phường Bến Nghé, Quận 1');
+  });
+
+  test('GET /api/geo/reverse validates coordinates and returns Vietnamese reverse geocoding info', async () => {
+    // 1. Missing coordinates validation
+    const invalidRes = await makeRequest('GET', '/api/geo/reverse');
+    assert.strictEqual(invalidRes.statusCode, 400);
+    assert.strictEqual(invalidRes.data.ok, false);
+
+    // 2. Valid coordinates lookup (with caching)
+    const validRes = await makeRequest('GET', '/api/geo/reverse?lat=10.8798&lng=106.8068');
+    assert.strictEqual(validRes.statusCode, 200);
+    assert.strictEqual(validRes.data.ok, true);
+    assert.ok(typeof validRes.data.detailed_address === 'string' && validRes.data.detailed_address.length > 0);
+    assert.ok(typeof validRes.data.full_address === 'string');
+    assert.ok(validRes.data.province_name);
+    assert.strictEqual(validRes.data.lat, 10.8798);
+    assert.strictEqual(validRes.data.lng, 106.8068);
+  });
+
+  test('POST /api/auth/register enforces password requirement and allows login verification', async () => {
+    const testPhone = '0936' + Math.floor(100000 + Math.random() * 900000);
+    
+    // 1. Missing or short password fails with 400
+    const shortPwRes = await makeRequest('POST', '/api/auth/register', {
+      full_name: 'Nguyễn Văn Test',
+      phone_number: testPhone,
+      email: 'test@giadinhxanh.vn',
+      password: '123'
+    });
+    assert.strictEqual(shortPwRes.statusCode, 400);
+    assert.strictEqual(shortPwRes.data.ok, false);
+
+    // 2. Valid registration with password
+    const regRes = await makeRequest('POST', '/api/auth/register', {
+      full_name: 'Nguyễn Văn Test',
+      phone_number: testPhone,
+      email: `${testPhone}@test.vn`,
+      password: 'StrongPassword123',
+      role: 'customer'
+    });
+    assert.strictEqual(regRes.statusCode, 201);
+    assert.strictEqual(regRes.data.ok, true);
+    assert.strictEqual(regRes.data.user.phone_number, testPhone);
+
+    // 3. Login with wrong password returns 401
+    const wrongLoginRes = await makeRequest('POST', '/api/auth/login', {
+      identifier: testPhone,
+      password: 'WrongPassword'
+    });
+    assert.strictEqual(wrongLoginRes.statusCode, 401);
+    assert.strictEqual(wrongLoginRes.data.ok, false);
+
+    // 4. Login with correct password returns 200 and user info
+    const correctLoginRes = await makeRequest('POST', '/api/auth/login', {
+      identifier: testPhone,
+      password: 'StrongPassword123'
+    });
+    assert.strictEqual(correctLoginRes.statusCode, 200);
+    assert.strictEqual(correctLoginRes.data.ok, true);
+    assert.strictEqual(correctLoginRes.data.user.phone_number, testPhone);
+  });
+
+  test('Job Dispatch Inbox & Concurrency: POST /api/bookings supports broadcast pool and /accept prevents double-booking (expired lock)', async () => {
+    // 1. Create a broadcast order (provider_id = null)
+    const broadcastPayload = {
+      customer_id: 101,
+      provider_id: null,
+      service_id: 301,
+      ward_id: '27403',
+      address: 'KTX Khu A ĐHQG, Tạ Quang Bửu, Phường Linh Trung',
+      total_amount: 170000,
+      notes: 'Đơn broadcast gửi tới toàn bộ thợ'
+    };
+    const createRes = await makeRequest('POST', '/api/bookings', broadcastPayload);
+    assert.strictEqual(createRes.statusCode, 201);
+    assert.strictEqual(createRes.data.ok, true);
+    const bkId = createRes.data.booking.booking_id;
+    assert.strictEqual(createRes.data.booking.dispatch_type, 'broadcast');
+
+    // 2. First provider accepts job successfully
+    const acceptRes1 = await makeRequest('POST', `/api/bookings/${bkId}/accept`, {
+      provider_id: 201,
+      user_id: 4
+    });
+    assert.strictEqual(acceptRes1.statusCode, 200);
+    assert.strictEqual(acceptRes1.data.ok, true);
+    assert.strictEqual(acceptRes1.data.booking.status, 'confirmed');
+    assert.strictEqual(acceptRes1.data.booking.provider_id, 201);
+
+    // 3. Second provider attempts to accept the same job -> returns 409 Expired
+    const acceptRes2 = await makeRequest('POST', `/api/bookings/${bkId}/accept`, {
+      provider_id: 202,
+      user_id: 5
+    });
+    assert.strictEqual(acceptRes2.statusCode, 409);
+    assert.strictEqual(acceptRes2.data.ok, false);
+    assert.strictEqual(acceptRes2.data.expired, true);
+  });
+
+  test('VietQR Payment: POST /api/bookings/:id/pay confirms transaction and records paid state in database', async () => {
+    // 1. Get an existing booking from bootstrap
+    const boot1 = await makeRequest('GET', '/api/bootstrap');
+    assert.strictEqual(boot1.statusCode, 200);
+    const targetBooking = boot1.data.db.bookings[0];
+    assert.ok(targetBooking, 'Should have at least one booking');
+    const targetId = targetBooking.booking_id;
+
+    // 2. Pay for target booking via VietQR
+    const payRes = await makeRequest('POST', `/api/bookings/${targetId}/pay`, {
+      booking_id: targetId,
+      method: 'VIETQR_BANK_TRANSFER',
+      transaction_id: 'VCB-QR-TEST-9988',
+      amount: 240000,
+      changed_by: 1
+    });
+    assert.strictEqual(payRes.statusCode, 200);
+    assert.strictEqual(payRes.data.ok, true);
+    assert.strictEqual(payRes.data.booking.payment_status, 'paid');
+    assert.strictEqual(payRes.data.transaction_id, 'VCB-QR-TEST-9988');
+
+    // 3. Verify via bootstrap that the database persisted payment_status and history
+    const boot2 = await makeRequest('GET', '/api/bootstrap');
+    assert.strictEqual(boot2.statusCode, 200);
+    const bk = boot2.data.db.bookings.find((b) => b.booking_id === targetId);
+    assert.ok(bk);
+    assert.strictEqual(bk.payment_status, 'paid');
+    const hist = (boot2.data.db.booking_status_history || []).find((h) => h.booking_id === targetId && (h.reason || '').includes('VCB-QR-TEST-9988'));
+    assert.ok(hist, 'Status history should log VietQR transaction');
+  });
+
   test('Production Mode: /api/status?mode=production activates zero-mock production state', async () => {
     const res = await makeRequest('GET', '/api/status?mode=production');
     assert.strictEqual(res.statusCode, 200);

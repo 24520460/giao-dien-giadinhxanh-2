@@ -226,6 +226,46 @@ async function fetchSupabaseTable(client, tableName) {
   return { name: tableName, data: allData, error: null };
 }
 
+function sanitizeServicesAndCategories(remoteDb) {
+  if (!remoteDb) return;
+  if (Array.isArray(remoteDb.service_categories)) {
+    remoteDb.service_categories = remoteDb.service_categories.filter((c) => {
+      const name = (c.category_name || c.name || "").toLowerCase();
+      const slug = (c.slug || "").toLowerCase();
+      if (name.includes("repair") || name.includes("sửa") || slug.includes("repair") || name.includes("archived")) return false;
+      if (c.status === false) return false;
+      return true;
+    });
+  }
+  if (Array.isArray(remoteDb.services)) {
+    remoteDb.services = remoteDb.services
+      .filter((s) => {
+        const t = (s.title || "").toLowerCase();
+        if (t.includes("repair") || t.includes("sửa") || t.includes("appliance")) return false;
+        return true;
+      })
+      .map((s) => {
+        const t = (s.title || "").toLowerCase();
+        let img = s.image_url;
+        if (!img) {
+          if (t.includes("nấu") || t.includes("cơm")) img = "assets/cooking-family-meal.jpg";
+          else if (t.includes("đầu bếp") || t.includes("tiệc")) img = "assets/cooking-chef-prep.jpg";
+          else if (t.includes("deep") || t.includes("sâu") || t.includes("tổng vệ sinh")) img = "assets/cleaning-deep.jpg";
+          else img = "assets/cleaning-livingroom.jpg";
+        }
+        return { ...s, image_url: img };
+      });
+  }
+  if (Array.isArray(remoteDb.bookings)) {
+    remoteDb.bookings.forEach((b) => {
+      if (b.notes && b.notes.includes("[BROADCAST_POOL]") && b.status === "pending") {
+        b.provider_id = null;
+        b.dispatch_type = "broadcast";
+      }
+    });
+  }
+}
+
 async function fetchBootstrapData(isProd = false) {
   const { client, config } = getSupabaseClient();
 
@@ -278,6 +318,7 @@ async function fetchBootstrapData(isProd = false) {
       // Đảm bảo alias đồng nhất cho cả province/provinces và ward/wards
       remoteDb.provinces = remoteDb.province;
       remoteDb.wards = remoteDb.ward;
+      sanitizeServicesAndCategories(remoteDb);
 
       // Zero mock: Không tự động inject session giả định
       remoteDb.session = null;
@@ -335,6 +376,7 @@ async function fetchBootstrapData(isProd = false) {
         });
         remoteDb.provinces = remoteDb.province;
         remoteDb.wards = remoteDb.ward;
+        sanitizeServicesAndCategories(remoteDb);
 
         if ((remoteDb.province || []).length > 0 && (remoteDb.services || []).length > 0) {
           remoteDb.provider_public_profiles = computeProviderPublicProfiles(remoteDb);
@@ -351,6 +393,7 @@ async function fetchBootstrapData(isProd = false) {
     } catch (_) {}
   }
 
+  sanitizeServicesAndCategories(localDb);
   localDb.provider_public_profiles = computeProviderPublicProfiles(localDb);
   return {
     ok: true,
@@ -365,6 +408,8 @@ async function fetchBootstrapData(isProd = false) {
 // ---------------------------------------------------------------------
 // 4. XỬ LÝ REST API ENDPOINTS
 // ---------------------------------------------------------------------
+const GEO_CACHE = new Map();
+
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -514,10 +559,14 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     const fullName = String(body.full_name || "").trim();
     const phone = String(body.phone_number || "").trim();
     const email = String(body.email || "").trim();
+    const password = String(body.password || "").trim();
     const role = body.role === "provider" ? "provider" : "customer";
 
     if (!fullName || !phone) {
       return sendJson(res, 400, { ok: false, error: "Họ tên và số điện thoại là bắt buộc." });
+    }
+    if (!password || password.length < 6) {
+      return sendJson(res, 400, { ok: false, error: "Mật khẩu là bắt buộc và phải có tối thiểu 6 ký tự." });
     }
 
     if (isProd) {
@@ -537,7 +586,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       if (client.auth && client.auth.admin && config.supabaseServiceKey) {
         const { data: authData, error: authErr } = await client.auth.admin.createUser({
           email: userEmail,
-          password: body.password || `GiaDinhXanh@${phone.slice(-4)}`,
+          password: password,
           email_confirm: true,
           user_metadata: { full_name: fullName, phone_number: phone, role }
         });
@@ -556,7 +605,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       } else if (client.auth && client.auth.signUp) {
         const { data: authData, error: authErr } = await client.auth.signUp({
           email: userEmail,
-          password: body.password || `GiaDinhXanh@${phone.slice(-4)}`,
+          password: password,
           options: { data: { full_name: fullName, phone_number: phone, role } }
         });
         if (authErr) {
@@ -610,6 +659,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       full_name: fullName,
       phone_number: phone,
       email: email || `${phone}@giadinhxanh.vn`,
+      password: password,
       role,
       is_active: true,
       created_at: nowIso,
@@ -618,7 +668,164 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     db.users.push(newUser);
     saveLocalDb(db);
 
-    return sendJson(res, 201, { ok: true, user: newUser });
+    return sendJson(res, 201, {
+      ok: true,
+      user: {
+        user_id: newUser.user_id,
+        full_name: newUser.full_name,
+        phone_number: newUser.phone_number,
+        email: newUser.email,
+        role: newUser.role,
+        is_active: newUser.is_active,
+        created_at: newUser.created_at,
+        updated_at: newUser.updated_at
+      }
+    });
+  }
+
+  // 4.4b. POST /api/auth/login — Đăng nhập xác thực bằng SĐT/Email và Mật khẩu
+  if (method === "POST" && pathname === "/api/auth/login") {
+    const body = await parseBody(req);
+    const identifier = String(body.identifier || "").trim();
+    const password = String(body.password || "").trim();
+
+    if (!identifier || !password) {
+      return sendJson(res, 400, { ok: false, error: "Vui lòng nhập tài khoản (số điện thoại hoặc email) và mật khẩu." });
+    }
+
+    if (isProd) {
+      if (!client) {
+        return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      }
+
+      let targetEmail = identifier.includes("@") ? identifier : null;
+      let matchedUser = null;
+
+      if (!targetEmail) {
+        const { data: uByPhone } = await client
+          .from("users")
+          .select("*")
+          .eq("phone_number", identifier)
+          .maybeSingle();
+
+        if (uByPhone) {
+          matchedUser = uByPhone;
+          if (client.auth && client.auth.admin && config.supabaseServiceKey) {
+            try {
+              const { data: authInfo } = await client.auth.admin.getUserById(uByPhone.user_id);
+              if (authInfo && authInfo.user && authInfo.user.email) {
+                targetEmail = authInfo.user.email;
+              }
+            } catch (_) {}
+          }
+          if (!targetEmail) {
+            targetEmail = `${identifier}@giadinhxanh.vn`;
+          }
+        } else {
+          targetEmail = `${identifier}@giadinhxanh.vn`;
+        }
+      }
+
+      let authUser = null;
+      let sessionData = null;
+
+      if (client.auth && client.auth.signInWithPassword) {
+        const { data: signData, error: signErr } = await client.auth.signInWithPassword({
+          email: targetEmail,
+          password
+        });
+
+        if (signErr) {
+          let retryErr = signErr;
+          if (!identifier.includes("@") && targetEmail !== `${identifier}@giadinhxanh.vn`) {
+            const { data: retryData, error: rErr } = await client.auth.signInWithPassword({
+              email: `${identifier}@giadinhxanh.vn`,
+              password
+            });
+            if (!rErr && retryData && retryData.user) {
+              authUser = retryData.user;
+              sessionData = retryData.session;
+              retryErr = null;
+            }
+          }
+
+          if (retryErr) {
+            return sendJson(res, 401, {
+              ok: false,
+              error: "Số điện thoại / email hoặc mật khẩu không chính xác."
+            });
+          }
+        } else if (signData && signData.user) {
+          authUser = signData.user;
+          sessionData = signData.session;
+        }
+      }
+
+      const userId = (authUser && authUser.id) || (matchedUser && matchedUser.user_id);
+      if (!matchedUser && userId) {
+        const { data: u } = await client.from("users").select("*").eq("user_id", userId).maybeSingle();
+        matchedUser = u;
+      }
+
+      if (!matchedUser) {
+        return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ người dùng trong hệ thống." });
+      }
+
+      let customerProfile = null;
+      let providerProfile = null;
+
+      if (matchedUser.role === "customer") {
+        const { data: cp } = await client.from("customer_profiles").select("*").eq("user_id", matchedUser.user_id).maybeSingle();
+        customerProfile = cp;
+      } else if (matchedUser.role === "provider") {
+        const { data: pp } = await client.from("provider_profiles").select("*").eq("user_id", matchedUser.user_id).maybeSingle();
+        providerProfile = pp;
+      }
+
+      return sendJson(res, 200, {
+        ok: true,
+        user: {
+          ...matchedUser,
+          email: (authUser && authUser.email) || targetEmail
+        },
+        session: sessionData,
+        customer_profile: customerProfile,
+        provider_profile: providerProfile
+      });
+    }
+
+    // Local Mode
+    const found = db.users.find((u) => u.phone_number === identifier || u.email === identifier);
+    if (!found) {
+      return sendJson(res, 404, { ok: false, error: "Tài khoản không tồn tại trên hệ thống. Vui lòng đăng ký mới." });
+    }
+
+    if (found.password && found.password !== password) {
+      return sendJson(res, 401, { ok: false, error: "Mật khẩu không chính xác. Vui lòng kiểm tra lại." });
+    }
+    if (!found.password) {
+      found.password = password;
+      saveLocalDb(db);
+    }
+
+    const customerProfile = db.customer_profiles ? db.customer_profiles.find((c) => String(c.user_id) === String(found.user_id)) : null;
+    const providerProfile = db.provider_profiles ? db.provider_profiles.find((p) => String(p.user_id) === String(found.user_id)) : null;
+
+    return sendJson(res, 200, {
+      ok: true,
+      user: {
+        user_id: found.user_id,
+        full_name: found.full_name,
+        phone_number: found.phone_number,
+        email: found.email,
+        role: found.role,
+        is_active: found.is_active,
+        created_at: found.created_at,
+        updated_at: found.updated_at
+      },
+      customer_profile: customerProfile,
+      provider_profile: providerProfile
+    });
   }
 
   // 4.5. POST /api/onboarding/customer — Lưu hồ sơ khách hàng mới (Cold Start 0.2)
@@ -754,26 +961,52 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
   if (method === "PUT" && (pathname === "/api/profile/customer" || pathname === "/api/customer/profile")) {
     const body = await parseBody(req);
     const customerId = Number(body.customer_id);
+    const userId = body.user_id ? String(body.user_id) : null;
 
     if (isProd) {
       if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
-      const { data: cp, error: cpErr } = await client.from("customer_profiles").update({
+
+      // Cập nhật bảng users nếu có đổi tên hoặc số điện thoại
+      if (userId && (body.full_name || body.phone_number)) {
+        const uFields = { updated_at: new Date().toISOString() };
+        if (body.full_name) uFields.full_name = String(body.full_name).trim();
+        if (body.phone_number) uFields.phone_number = String(body.phone_number).trim();
+        await client.from("users").update(uFields).eq("user_id", userId);
+      }
+
+      const updateData = {
         ward_id: String(body.ward_id || "27403"),
         default_address: String(body.default_address || "").trim(),
         latitude: Number(body.latitude) || 10.728912,
         longitude: Number(body.longitude) || 106.712405,
         updated_at: new Date().toISOString()
-      }).eq("customer_id", customerId).select().single();
+      };
+
+      let cpQuery = client.from("customer_profiles").update(updateData);
+      if (customerId && !isNaN(customerId)) {
+        cpQuery = cpQuery.eq("customer_id", customerId);
+      } else if (userId) {
+        cpQuery = cpQuery.eq("user_id", userId);
+      } else {
+        return sendJson(res, 400, { ok: false, error: "Cần cung cấp customer_id hoặc user_id." });
+      }
+
+      const { data: cp, error: cpErr } = await cpQuery.select().single();
       if (cpErr) return sendJson(res, 500, { ok: false, error: cpErr.message });
       return sendJson(res, 200, { ok: true, customer_profile: cp });
     }
 
     // Local mode
-    const targetCid = customerId || 101;
-    const cp = db.customer_profiles.find((c) => c.customer_id === targetCid);
+    let cp = customerId && !isNaN(customerId) ? db.customer_profiles.find((c) => c.customer_id === customerId) : null;
+    if (!cp && userId) {
+      cp = db.customer_profiles.find((c) => c.user_id === userId);
+    }
+    if (!cp) {
+      cp = db.customer_profiles[0];
+    }
     if (!cp) return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ khách hàng." });
 
-    const u = db.users.find((x) => x.user_id === cp.user_id);
+    const u = db.users.find((x) => x.user_id === cp.user_id || x.user_id === userId);
     if (u) {
       if (body.full_name) u.full_name = String(body.full_name).trim();
       if (body.phone_number) u.phone_number = String(body.phone_number).trim();
@@ -787,6 +1020,103 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
 
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, user: u, customer_profile: cp });
+  }
+
+  // 4.7b. GET /api/geo/reverse — Reverse Geocoding tự động nhận diện địa chỉ từ GPS & Pin Drop
+  if (method === "GET" && pathname === "/api/geo/reverse") {
+    const rawLat = searchParams.get("lat");
+    const rawLng = searchParams.get("lng");
+
+    if (!rawLat || !rawLng) {
+      return sendJson(res, 400, { ok: false, error: "Vĩ độ (lat) và kinh độ (lng) không được để trống." });
+    }
+
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return sendJson(res, 400, { ok: false, error: "Vĩ độ (lat) và kinh độ (lng) không hợp lệ." });
+    }
+
+    const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    if (GEO_CACHE.has(cacheKey)) {
+      return sendJson(res, 200, GEO_CACHE.get(cacheKey));
+    }
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=vi`;
+      const fetchRes = await fetch(url, {
+        headers: {
+          "User-Agent": "GiaDinhXanh/1.0 (contact@giadinhxanh.vn)"
+        }
+      });
+
+      if (!fetchRes.ok) {
+        throw new Error(`Nominatim HTTP ${fetchRes.status}`);
+      }
+
+      const data = await fetchRes.json();
+      const addr = data.address || {};
+
+      // 1. Số nhà & Tên đường / Địa danh cụ thể
+      const placeName = addr.amenity || addr.building || addr.shop || addr.tourism || addr.office || addr.leisure || "";
+      const houseNumber = addr.house_number || "";
+      const road = addr.road || addr.street || addr.pedestrian || "";
+      const residential = addr.residential || addr.neighbourhood || "";
+
+      let detailedAddress = "";
+      if (placeName && road) {
+        detailedAddress = `${placeName}, Đường ${road.replace(/^Đường\s+/i, "")}`;
+      } else if (placeName) {
+        detailedAddress = placeName + (residential ? `, ${residential}` : "");
+      } else if (houseNumber && road) {
+        detailedAddress = `Số ${houseNumber} Đường ${road.replace(/^Đường\s+/i, "")}`;
+      } else if (road) {
+        detailedAddress = `Đường ${road.replace(/^Đường\s+/i, "")}`;
+      } else if (residential) {
+        detailedAddress = residential;
+      } else {
+        detailedAddress = data.name || (data.display_name ? data.display_name.split(",")[0] : "");
+      }
+
+      // 2. Phường / Xã / Thị trấn
+      const wardName = addr.suburb || addr.quarter || addr.village || addr.town || addr.city_district || "";
+
+      // 3. Quận / Huyện / Thị xã / TP trực thuộc
+      const districtName = addr.city_district || addr.county || addr.district || "";
+
+      // 4. Tỉnh / Thành phố
+      const provinceName = addr.city || addr.province || addr.state || "";
+
+      const result = {
+        ok: true,
+        detailed_address: detailedAddress.trim(),
+        full_address: data.display_name || detailedAddress,
+        ward_name: wardName,
+        district_name: districtName,
+        province_name: provinceName,
+        lat,
+        lng,
+        raw: addr
+      };
+
+      GEO_CACHE.set(cacheKey, result);
+      if (GEO_CACHE.size > 200) {
+        const firstKey = GEO_CACHE.keys().next().value;
+        GEO_CACHE.delete(firstKey);
+      }
+
+      return sendJson(res, 200, result);
+    } catch (err) {
+      console.warn("[Reverse Geocode Warning]", err.message);
+      return sendJson(res, 200, {
+        ok: false,
+        error: err.message,
+        detailed_address: "",
+        lat,
+        lng
+      });
+    }
   }
 
   // 4.8. PATCH /api/provider/online-gps — Component 2.5: Bật/tắt nhận việc & tọa độ
@@ -873,9 +1203,10 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     if (isProd) {
       if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
       const nowIso = new Date().toISOString();
+      const isBroadcast = (body.provider_id === null || body.provider_id === undefined || body.provider_id === "broadcast");
       const newBk = {
         customer_id: customerId,
-        provider_id: providerId,
+        provider_id: isBroadcast ? "00000000-0000-4000-8000-000000000200" : body.provider_id,
         service_id: serviceId,
         scheduled_time: body.scheduled_time || nowIso,
         status: "pending",
@@ -885,7 +1216,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
         longitude: Number(body.longitude) || 106.712405,
         total_amount: Number(body.total_amount) || 180000,
         total_incidental: 0,
-        notes: String(body.notes || "Khách đặt lịch qua hệ thống.").trim(),
+        notes: (isBroadcast ? "[BROADCAST_POOL] " : "") + String(body.notes || "Khách đặt lịch qua hệ thống.").trim(),
         payment_status: "unpaid"
       };
 
@@ -907,11 +1238,14 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     const svc = db.services.find((s) => s.service_id === serviceId);
     const nextId = Math.max(1040, ...db.bookings.map((b) => b.booking_id || 0)) + 1;
     const nowIso = new Date().toISOString();
+    const isBroadcast = (body.provider_id === null || body.provider_id === undefined || body.provider_id === "broadcast");
+    const chosenProviderId = isBroadcast ? null : Number(body.provider_id);
 
     const newBooking = {
       booking_id: nextId,
       customer_id: customerId,
-      provider_id: providerId || 201,
+      provider_id: chosenProviderId,
+      dispatch_type: isBroadcast ? "broadcast" : "direct",
       service_id: serviceId,
       scheduled_time: body.scheduled_time || nowIso,
       status: "pending",
@@ -921,7 +1255,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       longitude: Number(body.longitude) || 106.712405,
       total_amount: Number(body.total_amount) || (svc ? svc.price : 180000),
       total_incidental: 0,
-      notes: String(body.notes || "Khách đặt lịch qua Booking Wizard.").trim(),
+      notes: (isBroadcast ? "[BROADCAST_POOL] " : "") + String(body.notes || "Khách đặt lịch qua Booking Wizard.").trim(),
       payment_status: "unpaid",
       created_at: nowIso,
       updated_at: nowIso
@@ -941,6 +1275,89 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     db.booking_status_history.unshift(historyRow);
     saveLocalDb(db);
     return sendJson(res, 201, { ok: true, booking: newBooking, history: historyRow });
+  }
+
+  // 4.10b. POST /api/bookings/:id/accept — Đối tác Thợ nhận việc từ Hòm thư (Concurrency & Expired check)
+  const acceptMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/accept$/);
+  if (method === "POST" && acceptMatch) {
+    const rawBookingId = acceptMatch[1];
+    const body = await parseBody(req);
+    const providerId = body.provider_id;
+    const actorUserId = body.user_id || body.changed_by;
+
+    if (isProd) {
+      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+      const { data: curBk, error: fetchErr } = await client.from("bookings").select("*").eq("booking_id", rawBookingId).single();
+      if (fetchErr || !curBk) {
+        return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+      }
+      if (curBk.status !== "pending") {
+        return sendJson(res, 409, {
+          ok: false,
+          expired: true,
+          error: "Rất tiếc! Đơn này vừa được một đối tác khác nhận trước hoặc đã hết hạn."
+        });
+      }
+      const { data: updatedBk, error: updErr } = await client
+        .from("bookings")
+        .update({
+          status: "confirmed",
+          provider_id: providerId,
+          updated_at: new Date().toISOString()
+        })
+        .eq("booking_id", rawBookingId)
+        .eq("status", "pending")
+        .select()
+        .single();
+      if (updErr || !updatedBk) {
+        return sendJson(res, 409, {
+          ok: false,
+          expired: true,
+          error: "Đơn hàng đã có người nhận trước hoặc không còn khả dụng."
+        });
+      }
+      await client.from("booking_status_history").insert([{
+        booking_id: rawBookingId,
+        previous_status: "pending",
+        new_status: "confirmed",
+        changed_by: actorUserId,
+        reason: "Đối tác đã nhận việc từ Hòm thư việc làm"
+      }]);
+      return sendJson(res, 200, { ok: true, booking: updatedBk });
+    }
+
+    // Local mode
+    const bookingId = Number(rawBookingId);
+    const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+
+    if (bk.status !== "pending") {
+      return sendJson(res, 409, {
+        ok: false,
+        expired: true,
+        error: "Rất tiếc! Đơn này vừa được một đối tác khác nhận trước hoặc đã hết hạn."
+      });
+    }
+
+    const oldStatus = bk.status;
+    bk.status = "confirmed";
+    bk.provider_id = Number(providerId);
+    bk.dispatch_type = "direct";
+    bk.updated_at = new Date().toISOString();
+
+    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
+    const historyRow = {
+      history_id: nextHistoryId,
+      booking_id: bookingId,
+      previous_status: oldStatus,
+      new_status: "confirmed",
+      changed_by: actorUserId || 4,
+      reason: "Đối tác đã nhận việc từ Hòm thư việc làm",
+      created_at: new Date().toISOString()
+    };
+    db.booking_status_history.unshift(historyRow);
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, booking: bk, history: historyRow });
   }
 
   // 4.11. POST /api/rpc/transition-status — Chuyển trạng thái đơn hàng
@@ -1020,27 +1437,90 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     return sendJson(res, 200, { ok: true, booking: bk });
   }
 
-  // 4.13. POST /api/rpc/confirm-payment — Khách hàng xác nhận thanh toán
-  if (method === "POST" && pathname === "/api/rpc/confirm-payment") {
+  // 4.13. POST /api/rpc/confirm-payment & POST /api/bookings/:id/pay — Khách hàng xác nhận thanh toán (hỗ trợ VietQR)
+  if (method === "POST" && (pathname === "/api/rpc/confirm-payment" || (pathname.startsWith("/api/bookings/") && pathname.endsWith("/pay")))) {
     const body = await parseBody(req);
-    const bookingId = Number(body.booking_id);
+    let bookingId = body.booking_id != null ? body.booking_id : null;
+    if (!bookingId && pathname.startsWith("/api/bookings/")) {
+      const parts = pathname.split("/");
+      const bIdx = parts.indexOf("bookings");
+      if (bIdx !== -1 && bIdx + 1 < parts.length) {
+        bookingId = parts[bIdx + 1];
+      }
+    }
+    if (typeof bookingId === "string" && /^\d+$/.test(bookingId)) {
+      bookingId = Number(bookingId);
+    }
+    const methodType = body.method || "VIETQR_BANK_TRANSFER";
+    const txId = body.transaction_id || `VCB-${Date.now().toString().slice(-8)}`;
+    const nowIso = new Date().toISOString();
 
     if (isProd) {
       if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
       const { data: bk, error: bkErr } = await client.from("bookings").update({
         payment_status: "paid",
-        updated_at: new Date().toISOString()
+        updated_at: nowIso
       }).eq("booking_id", bookingId).select().single();
       if (bkErr) return sendJson(res, 500, { ok: false, error: bkErr.message });
-      return sendJson(res, 200, { ok: true, booking: bk });
+
+      try {
+        const actorId = (typeof body.changed_by === "string" && body.changed_by.length > 20) ? body.changed_by : "bcba1d58-caef-4122-a4be-e8819b459ef9";
+        await client.from("booking_status_history").insert([{
+          booking_id: bookingId,
+          previous_status: bk ? bk.status : "in_progress",
+          new_status: bk ? bk.status : "in_progress",
+          changed_by: actorId,
+          reason: `[THANH TOÁN THÀNH CÔNG] Đã thanh toán qua ${methodType === "VIETQR_BANK_TRANSFER" ? "VietQR Ngân hàng (Vietcombank)" : "Tiền mặt"} (Mã GD: ${txId})`,
+          created_at: nowIso
+        }]);
+      } catch (_) {}
+
+      return sendJson(res, 200, { ok: true, booking: bk, transaction_id: txId, payment_status: "paid", paid_at: nowIso });
     }
 
-    const bk = db.bookings.find((b) => b.booking_id === bookingId);
-    if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+    let bk = db.bookings.find((b) => String(b.booking_id) === String(bookingId) || (Number(b.booking_id) && Number(b.booking_id) === Number(bookingId)));
+
+    // Fallback hybrid: Nếu không thấy trong localDb và có kết nối client Supabase
+    if (!bk && client) {
+      try {
+        const { data: remoteBk, error: remErr } = await client.from("bookings").update({
+          payment_status: "paid",
+          updated_at: nowIso
+        }).eq("booking_id", bookingId).select().single();
+        if (!remErr && remoteBk) {
+          try {
+            const actorId = (typeof body.changed_by === "string" && body.changed_by.length > 20) ? body.changed_by : "bcba1d58-caef-4122-a4be-e8819b459ef9";
+            await client.from("booking_status_history").insert([{
+              booking_id: bookingId,
+              previous_status: remoteBk.status,
+              new_status: remoteBk.status,
+              changed_by: actorId,
+              reason: `[THANH TOÁN THÀNH CÔNG] Đã thanh toán qua ${methodType === "VIETQR_BANK_TRANSFER" ? "VietQR Ngân hàng (Vietcombank)" : "Tiền mặt"} (Mã GD: ${txId})`,
+              created_at: nowIso
+            }]);
+          } catch (_) {}
+          return sendJson(res, 200, { ok: true, booking: remoteBk, transaction_id: txId, payment_status: "paid", paid_at: nowIso });
+        }
+      } catch (_) {}
+    }
+
+    if (!bk) return sendJson(res, 404, { ok: false, error: `Không tìm thấy đơn hàng #${bookingId}.` });
     bk.payment_status = "paid";
-    bk.updated_at = new Date().toISOString();
+    bk.updated_at = nowIso;
+
+    if (!Array.isArray(db.booking_status_history)) db.booking_status_history = [];
+    db.booking_status_history.unshift({
+      history_id: Date.now(),
+      booking_id: bookingId,
+      previous_status: bk.status,
+      new_status: bk.status,
+      changed_by: Number(body.changed_by) || 1,
+      reason: `[THANH TOÁN THÀNH CÔNG] Đã thanh toán qua ${methodType === "VIETQR_BANK_TRANSFER" ? "VietQR Ngân hàng (Vietcombank)" : "Tiền mặt"} (Mã GD: ${txId})`,
+      created_at: nowIso
+    });
+
     saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, booking: bk });
+    return sendJson(res, 200, { ok: true, booking: bk, transaction_id: txId, payment_status: "paid", paid_at: nowIso });
   }
 
   // 4.14. POST /api/rpc/admin-adjust — Admin điều chỉnh đơn
