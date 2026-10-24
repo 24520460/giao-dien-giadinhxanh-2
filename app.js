@@ -14,7 +14,11 @@
 
 window.GDXApp = (() => {
   // --- APPLICATION STATE ---
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialViewMode = urlParams.get('mode') === 'dev' ? 'dev' : 'user';
+
   const state = {
+    viewMode: initialViewMode, // 'user': Luồng Người dùng thực tế | 'dev': Chế độ Dev (34 UI)
     currentPortal: 1, // 0: Auth, 1: Customer, 2: Provider, 3: Admin
     currentScreen: '1.1',
     activeModal: null,
@@ -31,14 +35,73 @@ window.GDXApp = (() => {
       scheduled_time: '2026-10-25T08:30',
       provinceId: '79',
       ward_id: '27403',
-      address: 'Biệt thự B14, Khu Cảnh Đồi, Phú Mỹ Hưng',
+      address: 'Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng',
       latitude: 10.728912,
       longitude: 106.712405,
       provider_id: 201,
-      notes: 'Bác trai cần đo huyết áp và hỗ trợ tập vật lý trị liệu nhẹ nhàng.',
-      hours: 4,
+      notes: 'Lau dọn kỹ khu vực phòng khách, ban công và gian bếp tầng trệt.',
+      hours: 3,
     },
+    backendStatus: {
+      mode: 'local_sql_store',
+      hasSupabaseUrl: false,
+      hasAnonKey: false,
+      hasServiceRoleKey: false,
+      supabaseReachable: false,
+      message: 'Đang kết nối tới Backend API...',
+      tableCounts: {}
+    }
   };
+
+  // --- BACKEND API & SUPABASE (.env.local) CLIENT HELPER ---
+  async function apiRequest(endpoint, options = {}) {
+    try {
+      const res = await fetch(endpoint, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  async function syncWithBackend() {
+    const [statusRes, bootRes] = await Promise.all([
+      apiRequest('/api/status'),
+      apiRequest('/api/bootstrap')
+    ]);
+
+    if (statusRes && statusRes.ok) {
+      state.backendStatus = statusRes;
+      const dot = document.getElementById('backendConnDot');
+      const label = document.getElementById('backendConnLabel');
+      if (dot && label) {
+        dot.className = 'status-dot is-online';
+        label.textContent = statusRes.supabaseReachable
+          ? 'Supabase · Connected'
+          : 'API · .env.local';
+      }
+    }
+
+    if (bootRes && bootRes.ok && bootRes.db) {
+      const db = window.GDX_DB;
+      const remote = bootRes.db;
+      const tables = [
+        'province', 'ward', 'users', 'customer_profiles', 'provider_profiles',
+        'service_categories', 'services', 'provider_services', 'provider_areas',
+        'availability_schedules', 'availability_exceptions', 'bookings',
+        'booking_status_history', 'reviews', 'favorites', 'support_tickets'
+      ];
+      tables.forEach((t) => {
+        if (Array.isArray(remote[t])) {
+          db[t] = remote[t];
+        }
+      });
+      go(state.currentScreen);
+    }
+  }
 
   // Format currency VND
   function formatMoney(amount) {
@@ -80,6 +143,16 @@ window.GDXApp = (() => {
         created_at: new Date().toISOString(),
       });
 
+      apiRequest('/api/rpc/transition-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: b.booking_id,
+          new_status: newStatus,
+          reason: reason || 'Chuyển trạng thái theo quy trình tác nghiệp',
+          changed_by: state.activeUserId
+        })
+      });
+
       return { success: true, booking: b, prevStatus, newStatus };
     },
 
@@ -109,10 +182,20 @@ window.GDXApp = (() => {
         created_at: new Date().toISOString(),
       });
 
+      apiRequest('/api/rpc/update-incidental', {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: b.booking_id,
+          total_incidental: cost,
+          notes: note,
+          changed_by: state.activeUserId
+        })
+      });
+
       return { success: true, total_incidental: cost, total_amount: newTotal };
     },
 
-    confirmPayment(bookingId, method = 'QR_SEPAY') {
+    confirmPayment(bookingId, method = 'DIRECT_CONFIRM') {
       const db = window.GDX_DB;
       const b = db.bookings.find((item) => item.booking_id === Number(bookingId));
       if (!b) return { success: false, message: `Không tìm thấy đơn hàng #${bookingId}` };
@@ -126,8 +209,16 @@ window.GDXApp = (() => {
         previous_status: b.status,
         new_status: b.status,
         changed_by: state.activeUserId,
-        reason: `Thanh toán thành công ${formatMoney(b.total_amount)} qua phương thức ${method}`,
+        reason: `Khách hàng xác nhận đã thanh toán ${formatMoney(b.total_amount)} (${method})`,
         created_at: new Date().toISOString(),
+      });
+
+      apiRequest('/api/rpc/confirm-payment', {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: b.booking_id,
+          changed_by: state.activeUserId
+        })
       });
 
       return { success: true, booking: b };
@@ -156,6 +247,19 @@ window.GDXApp = (() => {
         changed_by: state.activeUserId,
         reason: `[ADMIN ADJUSTMENT] TT Thanh toán: ${prevPay} -> ${b.payment_status} | Tổng tiền: ${formatMoney(b.total_amount)} | Lý do: ${reason}`,
         created_at: new Date().toISOString(),
+      });
+
+      apiRequest('/api/rpc/admin-adjust', {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: b.booking_id,
+          total_incidental: b.total_incidental,
+          total_amount: b.total_amount,
+          payment_status: b.payment_status,
+          status: b.status,
+          provider_id: b.provider_id,
+          reason
+        })
       });
 
       return { success: true, booking: b };
@@ -237,10 +341,248 @@ window.GDXApp = (() => {
     }, 1000);
   }
 
+  // --- USER-FACING COPY MAP FOR 'user' MODE (Hides SQL/RLS jargon for real end-users) ---
+  const USER_SCREEN_COPY = {
+    '0.1': { title: 'Đăng nhập & Đăng ký tài khoản', sub: 'Sử dụng số điện thoại hoặc email để đặt lịch và quản lý dịch vụ gia đình của bạn.' },
+    '0.2': { title: 'Thiết lập thông tin liên hệ & Địa chỉ', sub: 'Cập nhật địa chỉ mặc định để hệ thống gợi ý thợ gần khu vực nhà bạn nhất.' },
+    '0.3': { title: 'Đăng ký trở thành Đối tác Thợ', sub: 'Điền thông tin cá nhân, kinh nghiệm làm việc và khu vực bạn muốn nhận lịch.' },
+    '0.4': { title: 'Trạng thái hồ sơ đăng ký Đối tác', sub: 'Theo dõi kết quả xét duyệt hồ sơ đối tác dịch vụ của bạn tại Gia Đình Xanh.' },
+    '0.5': { title: 'Tài khoản đang tạm ngừng hoạt động', sub: 'Vui lòng gửi yêu cầu hỗ trợ để được giải đáp và mở lại tài khoản.' },
+    '1.1': { title: 'Trang chủ & Khám phá dịch vụ', sub: '' },
+    '1.2': { title: 'Đặt lịch dịch vụ tại nhà', sub: 'Chọn gói dịch vụ, thời gian hẹn và thợ phụ trách phù hợp với nhu cầu gia đình bạn.' },
+    '1.3': { title: 'Theo dõi tiến độ ca dịch vụ', sub: 'Cập nhật trạng thái thực hiện, thông tin thợ phụ trách và chi tiết hóa đơn.' },
+    '1.4': { title: 'Lịch hẹn dịch vụ của tôi', sub: 'Quản lý các lịch hẹn sắp tới, xem lại lịch sử và đánh giá chất lượng phục vụ.' },
+    '1.5': { title: 'Thông tin cá nhân & Sổ địa chỉ', sub: 'Cập nhật họ tên, số điện thoại liên hệ và địa chỉ mặc định khi đặt dịch vụ.' },
+    '1.6': { title: 'Dịch vụ gia đình đã lưu', sub: 'Danh sách các gói dịch vụ bạn yêu thích để đặt lại nhanh chóng.' },
+    '1.7': { title: 'Hồ sơ đối tác thực hiện dịch vụ', sub: 'Thông tin kinh nghiệm, các dịch vụ đảm nhận và nhận xét từ khách hàng trước.' },
+    '1.8': { title: 'Thanh toán hóa đơn dịch vụ', sub: 'Kiểm tra chi tiết chi phí và xác nhận hoàn tất thanh toán cho ca dịch vụ.' },
+    '1.9': { title: 'Đánh giá chất lượng dịch vụ', sub: 'Chia sẻ cảm nhận của bạn sau khi ca làm việc hoàn tất.' },
+    '1.10': { title: 'Xác nhận hủy lịch hẹn', sub: 'Vui lòng cho biết lý do hủy để chúng tôi thông báo tới thợ phụ trách.' },
+    '1.11': { title: 'Trung tâm Hỗ trợ Khách hàng', sub: 'Gửi câu hỏi hoặc phản ánh về ca dịch vụ để đội ngũ chăm sóc khách hàng hỗ trợ bạn.' },
+    '2.1': { title: 'Việc làm mới trong khu vực của bạn', sub: 'Danh sách các lịch hẹn mới phù hợp với kỹ năng và phường/xã bạn đã đăng ký.' },
+    '2.2': { title: 'Ca làm việc đang thực hiện', sub: 'Theo dõi thời gian làm việc, địa chỉ khách hàng và cập nhật phụ phí vật tư mua hộ.' },
+    '2.3': { title: 'Ví thu nhập & Lịch làm việc tuần', sub: 'Tổng hợp thu nhập từ các ca đã hoàn tất và quản lý khung giờ nhận việc trong tuần.' },
+    '2.4': { title: 'Kỹ năng dịch vụ & Khu vực nhận việc', sub: 'Tùy chỉnh các gói dịch vụ bạn nhận làm và các phường/xã bạn có thể di chuyển tới.' },
+    '2.6': { title: 'Cài đặt lịch làm việc & Xin nghỉ phép', sub: 'Thiết lập các ngày làm cố định trong tuần hoặc báo bận đột xuất.' },
+    '2.7': { title: 'Kê khai phụ phí vật tư mua hộ', sub: 'Ghi nhận chi phí mua thêm vật tư hoặc nguyên liệu theo yêu cầu của chủ nhà.' },
+    '2.8': { title: 'Xác nhận từ chối hoặc hủy nhận ca', sub: 'Vui lòng nhập lý do để hệ thống sắp xếp thợ khác hỗ trợ khách hàng kịp thời.' },
+    '2.9': { title: 'Báo cáo sự cố cần hỗ trợ', sub: 'Gửi thông báo tới bộ phận điều phối khi gặp vướng mắc tại địa chỉ khách hàng.' },
+    '3.1': { title: 'Tổng quan vận hành & Điều phối lịch hẹn', sub: 'Theo dõi doanh thu, tình trạng các ca dịch vụ và hỗ trợ điều phối thợ.' },
+    '3.2': { title: 'Quản lý danh mục & Biểu phí dịch vụ', sub: 'Cập nhật danh mục, đơn giá niêm yết và trạng thái hiển thị của các gói dịch vụ.' },
+    '3.3': { title: 'Duyệt hồ sơ đăng ký Đối tác Thợ', sub: 'Kiểm tra thông tin đăng ký và phê duyệt cho phép đối tác nhận việc trên hệ thống.' },
+    '3.4': { title: 'Quản lý tài khoản, Hỗ trợ & Đánh giá', sub: 'Quản lý trạng thái tài khoản người dùng, xử lý yêu cầu hỗ trợ và đánh giá dịch vụ.' },
+    '3.5': { title: 'Chi tiết đơn hàng & Lịch sử cập nhật', sub: 'Xem toàn bộ quá trình thay đổi trạng thái của đơn đặt lịch.' },
+    '3.6': { title: 'Điều chỉnh thanh toán & Hoàn tiền', sub: 'Cập nhật chi phí, trạng thái thanh toán hoặc hoàn tiền cho khách hàng.' },
+    '3.7': { title: 'Xử lý yêu cầu hỗ trợ khách hàng', sub: 'Cập nhật mức độ ưu tiên và kết quả giải quyết phiếu hỗ trợ.' },
+    '3.8': { title: 'Cập nhật Danh mục & Gói dịch vụ', sub: 'Thêm mới hoặc chỉnh sửa thông tin gói dịch vụ gia đình.' },
+    '3.9': { title: 'Quản lý danh sách Tỉnh/Thành & Phường/Xã', sub: 'Cập nhật các khu vực hành chính đang triển khai dịch vụ.' }
+  };
+
+  function cleanTechnicalLabelText(str) {
+    if (!str) return str;
+    return str
+      .replace(/\s*\((?:users|auth\.users|customer_profiles|provider_profiles|provider_public_profiles|provider_services|provider_areas|availability_schedules|availability_exceptions|bookings|booking_status_history|reviews|favorites|support_tickets|service_categories|services|province|ward)[^)]*\)/gi, '')
+      .replace(/\s*\((?:ward_id|id_card_number|default_address|category_id|parent_id|pricing_type|total_incidental|total_amount|payment_status|status|priority|subject|exception_date|day_of_week|base_price|Charts\.bars|Charts\.line|verification_status|UNIQUE|0\.\.6)[^)]*\)/gi, '')
+      .replace(/\b(?:pending|confirmed|in_progress|completed|cancelled|rejected|unpaid|paid|refunded|open|resolved|closed|verified)\b/g, (match) => {
+        const map = {
+          pending: 'Chờ xác nhận',
+          confirmed: 'Đã xác nhận',
+          in_progress: 'Đang thực hiện',
+          completed: 'Hoàn thành',
+          cancelled: 'Đã hủy',
+          rejected: 'Từ chối',
+          unpaid: 'Chưa thanh toán',
+          paid: 'Đã thanh toán',
+          refunded: 'Đã hoàn tiền',
+          open: 'Đang mở',
+          resolved: 'Đã giải quyết',
+          closed: 'Đã đóng',
+          verified: 'Đã xác minh'
+        };
+        return map[match] || match;
+      });
+  }
+
+  function applyUserModeCleanups(rootEl, screenOrModalId) {
+    if (state.viewMode !== 'user' || !rootEl) return;
+
+    const copy = USER_SCREEN_COPY[screenOrModalId];
+    const titleEl = rootEl.querySelector('.screen-title') || (rootEl.id === 'modalDialog' ? rootEl.querySelector('#modalTitle') : null);
+    if (titleEl) {
+      if (copy && copy.title) {
+        if (screenOrModalId === '1.3') {
+          const bIdMatch = titleEl.textContent.match(/#\d+/);
+          titleEl.textContent = `${copy.title} ${bIdMatch ? '· ' + bIdMatch[0] : ''}`.trim();
+        } else if (screenOrModalId === '1.6' || screenOrModalId === '2.1') {
+          const countMatch = titleEl.textContent.match(/\(\d+\)/);
+          titleEl.textContent = `${copy.title} ${countMatch ? countMatch[0] : ''}`.trim();
+        } else {
+          titleEl.textContent = copy.title;
+        }
+      } else {
+        titleEl.textContent = titleEl.textContent.replace(/^\d+\.\d+\.\s*/, '');
+      }
+    }
+
+    const findingEl = rootEl.querySelector('.screen-finding') || (rootEl.id === 'modalDialog' ? rootEl.querySelector('#modalSub') : null);
+    if (findingEl && copy && copy.sub !== undefined) {
+      findingEl.textContent = copy.sub;
+    }
+
+    // Clean technical SQL references in labels, headings, tabs, hints, and badges
+    rootEl.querySelectorAll('.field-label, .panel-title, .u-tab, .field-hint, .kpi-note, .badge, h3, h4').forEach((el) => {
+      if (el.children.length === 0) {
+        el.textContent = cleanTechnicalLabelText(el.textContent);
+      }
+    });
+
+    // Clean technical paragraphs/divs containing <code> tags in user mode
+    rootEl.querySelectorAll('code').forEach((codeEl) => {
+      const parent = codeEl.parentElement;
+      if (parent && parent.textContent.includes('RLS')) {
+        parent.textContent = 'Đơn đặt lịch sẽ được gửi tới thợ phụ trách để xác nhận và thanh toán sau khi hoàn thành dịch vụ.';
+      } else if (parent && parent.textContent.includes('provider_public_profiles')) {
+        parent.textContent = 'Hồ sơ đối tác đã được xác minh thông tin tại Gia Đình Xanh.';
+      } else if (parent && parent.textContent.includes('provider_profiles')) {
+        parent.textContent = 'Tọa độ vị trí phục vụ điều phối ca làm việc.';
+      } else if (parent && parent.textContent.includes('rpc_customer_confirm_payment')) {
+        parent.textContent = 'Sau khi nghiệm thu công việc với thợ thực hiện, quý khách vui lòng thanh toán trực tiếp hoặc chuyển khoản theo thỏa thuận và bấm xác nhận bên dưới để hoàn tất hóa đơn.';
+      }
+    });
+  }
+
+  function renderUserTopbar() {
+    const userNav = document.getElementById('userMainNav');
+    const captionEl = document.getElementById('activeRoleCaption');
+    const accountLabel = document.getElementById('userAccountLabel');
+    const btnUser = document.getElementById('modeBtnUser');
+    const btnDev = document.getElementById('modeBtnDev');
+
+    if (btnUser && btnDev) {
+      btnUser.setAttribute('aria-pressed', state.viewMode === 'user' ? 'true' : 'false');
+      btnDev.setAttribute('aria-pressed', state.viewMode === 'dev' ? 'true' : 'false');
+    }
+
+    if (state.viewMode === 'dev') {
+      return;
+    }
+
+    // In 'user' mode, show natural role caption, navigation bar, and user account button
+    if (state.currentPortal === 1) {
+      if (captionEl) captionEl.textContent = 'Dịch vụ chăm sóc nhà cửa tại gia';
+      if (accountLabel) accountLabel.textContent = 'Nguyễn Minh Thảo · Tài khoản';
+      if (userNav) {
+        const items = [
+          { id: '1.1', label: 'Khám phá' },
+          { id: '1.2', label: 'Đặt lịch' },
+          { id: '1.3', label: 'Theo dõi đơn' },
+          { id: '1.4', label: 'Lịch hẹn' },
+          { id: '1.5', label: 'Sổ địa chỉ' },
+          { id: '1.11', label: 'Trợ giúp', isModal: true }
+        ];
+        userNav.innerHTML = items
+          .map(
+            (it) => `
+          <button type="button" class="portal-tab" aria-selected="${!it.isModal && state.currentScreen === it.id ? 'true' : 'false'}" onclick="${it.isModal ? `GDXApp.openModal('${it.id}')` : `GDXApp.go('${it.id}')`}">
+            ${it.label}
+          </button>`
+          )
+          .join('');
+      }
+    } else if (state.currentPortal === 2) {
+      if (captionEl) captionEl.textContent = 'Không gian làm việc Đối tác Thợ';
+      if (accountLabel) accountLabel.textContent = 'Đặng Thị Mai Lan (Thợ)';
+      if (userNav) {
+        const items = [
+          { id: '2.1', label: 'Việc làm mới' },
+          { id: '2.2', label: 'Ca đang làm' },
+          { id: '2.3', label: 'Thu nhập & Lịch' },
+          { id: '2.4', label: 'Kỹ năng & Khu vực' },
+          { id: '2.9', label: 'Báo sự cố', isModal: true }
+        ];
+        userNav.innerHTML = items
+          .map(
+            (it) => `
+          <button type="button" class="portal-tab" aria-selected="${!it.isModal && state.currentScreen === it.id ? 'true' : 'false'}" onclick="${it.isModal ? `GDXApp.openModal('${it.id}')` : `GDXApp.go('${it.id}')`}">
+            ${it.label}
+          </button>`
+          )
+          .join('');
+      }
+    } else if (state.currentPortal === 3) {
+      if (captionEl) captionEl.textContent = 'Trung tâm Điều phối & Quản trị';
+      if (accountLabel) accountLabel.textContent = 'Nguyễn Quang Hào (Quản trị)';
+      if (userNav) {
+        const items = [
+          { id: '3.1', label: 'Tổng quan & Điều phối' },
+          { id: '3.2', label: 'Dịch vụ & Bảng giá' },
+          { id: '3.3', label: 'Duyệt hồ sơ Thợ' },
+          { id: '3.4', label: 'Tài khoản & Hỗ trợ' }
+        ];
+        userNav.innerHTML = items
+          .map(
+            (it) => `
+          <button type="button" class="portal-tab" aria-selected="${state.currentScreen === it.id ? 'true' : 'false'}" onclick="GDXApp.go('${it.id}')">
+            ${it.label}
+          </button>`
+          )
+          .join('');
+      }
+    } else {
+      if (captionEl) captionEl.textContent = 'Tài khoản & Đăng ký Đối tác';
+      if (accountLabel) accountLabel.textContent = 'Khách hàng · Về Trang chủ';
+      if (userNav) {
+        const items = [
+          { id: '0.1', label: 'Đăng nhập / Đăng ký' },
+          { id: '0.3', label: 'Đăng ký làm Đối tác Thợ' },
+          { id: '1.1', label: '← Quay lại Trang chủ Dịch vụ', switchPortalTo: 1 }
+        ];
+        userNav.innerHTML = items
+          .map(
+            (it) => `
+          <button type="button" class="portal-tab" aria-selected="${state.currentScreen === it.id ? 'true' : 'false'}" onclick="${it.switchPortalTo ? `GDXApp.switchPortal(1, '1.1')` : `GDXApp.go('${it.id}')`}">
+            ${it.label}
+          </button>`
+          )
+          .join('');
+      }
+    }
+  }
+
+  function setViewMode(mode) {
+    state.viewMode = mode === 'dev' ? 'dev' : 'user';
+    document.body.setAttribute('data-view-mode', state.viewMode);
+    renderUserTopbar();
+    switchPortal(state.currentPortal, state.currentScreen);
+    showToast(
+      state.viewMode === 'user'
+        ? 'Đang ở Luồng Người dùng thực tế (góc nhìn Khách hàng / Người dùng)'
+        : 'Đang ở Chế độ Dev / Demo (hiển thị 4 Phân hệ, 34 UI & ánh xạ bảng SQL)'
+    );
+  }
+
+  function goHomeByRole() {
+    if (state.currentPortal === 2) {
+      go('2.1');
+    } else if (state.currentPortal === 3) {
+      go('3.1');
+    } else {
+      switchPortal(1, '1.1');
+    }
+  }
+
+  function handleUserAccountClick() {
+    if (state.currentPortal === 0) {
+      switchPortal(1, '1.1');
+    } else {
+      switchPortal(0, '0.1');
+    }
+  }
+
   // --- PORTAL & SIDEBAR SWITCHER ---
-  function switchPortal(portalId) {
+  function switchPortal(portalId, targetScreenId = null, params = {}) {
     state.currentPortal = Number(portalId);
-    document.querySelectorAll('.portal-tab').forEach((tab) => {
+    document.querySelectorAll('#devPortalSwitcher .portal-tab').forEach((tab) => {
       tab.setAttribute('aria-selected', tab.getAttribute('data-portal') === String(portalId));
     });
 
@@ -250,39 +592,43 @@ window.GDXApp = (() => {
     const provWidget = document.getElementById('providerHeaderWidget');
 
     if (portalId === 0) {
-      if (captionEl) captionEl.textContent = 'Phân hệ 0 · Dùng chung & Xác thực';
+      if (captionEl && state.viewMode === 'dev') captionEl.textContent = 'Phân hệ 0 · Dùng chung & Xác thực';
       if (identityEl) identityEl.textContent = 'Trạng thái: Khách vãng lai / Đăng nhập';
       state.userRole = 'anon';
       state.activeUserId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
       if (provWidget) provWidget.style.display = 'none';
-      renderSidebar('0.1');
-      go('0.1');
+      const dest = targetScreenId || '0.1';
+      renderSidebar(dest);
+      go(dest, params);
     } else if (portalId === 1) {
-      if (captionEl) captionEl.textContent = 'Phân hệ 1 · Khách hàng (Customer)';
+      if (captionEl && state.viewMode === 'dev') captionEl.textContent = 'Phân hệ 1 · Khách hàng (Customer)';
       if (identityEl) identityEl.textContent = 'auth.uid(): Nguyễn Minh Thảo (customer_id #101)';
       state.userRole = 'customer';
       state.activeUserId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
       state.activeCustomerId = 101;
       if (provWidget) provWidget.style.display = 'none';
-      renderSidebar('1.1');
-      go('1.1');
+      const dest = targetScreenId || '1.1';
+      renderSidebar(dest);
+      go(dest, params);
     } else if (portalId === 2) {
-      if (captionEl) captionEl.textContent = 'Phân hệ 2 · Thợ / Đối tác (Provider)';
+      if (captionEl && state.viewMode === 'dev') captionEl.textContent = 'Phân hệ 2 · Thợ / Đối tác (Provider)';
       if (identityEl) identityEl.textContent = 'auth.uid(): Đặng Thị Mai Lan (provider_id #201)';
       state.userRole = 'provider';
       state.activeUserId = 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21';
       state.activeProviderId = 201;
       if (provWidget) provWidget.style.display = 'flex';
-      renderSidebar('2.1');
-      go('2.1');
+      const dest = targetScreenId || '2.1';
+      renderSidebar(dest);
+      go(dest, params);
     } else if (portalId === 3) {
-      if (captionEl) captionEl.textContent = 'Phân hệ 3 · Quản trị viên (Admin)';
+      if (captionEl && state.viewMode === 'dev') captionEl.textContent = 'Phân hệ 3 · Quản trị viên (Admin)';
       if (identityEl) identityEl.textContent = 'auth.uid(): Nguyễn Quang Hào (role: admin)';
       state.userRole = 'admin';
       state.activeUserId = 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99';
       if (provWidget) provWidget.style.display = 'none';
-      renderSidebar('3.1');
-      go('3.1');
+      const dest = targetScreenId || '3.1';
+      renderSidebar(dest);
+      go(dest, params);
     }
   }
 
@@ -321,11 +667,12 @@ window.GDXApp = (() => {
     state.currentScreen = screenId;
     const meta = SCREENS[screenId];
     if (meta && meta.portal !== state.currentPortal) {
-      switchPortal(meta.portal);
+      switchPortal(meta.portal, screenId, params);
       return;
     }
 
     renderSidebar(screenId);
+    renderUserTopbar();
 
     const viewport = document.getElementById('mainViewport');
     if (!viewport) return;
@@ -372,6 +719,8 @@ window.GDXApp = (() => {
       default:
         viewport.innerHTML = `<div class="panel"><h2>Màn hình đang hoàn thiện: ${screenId}</h2></div>`;
     }
+
+    applyUserModeCleanups(viewport, screenId);
   }
 
   // --- COMPONENT 2.5: PROVIDER STATUS & GPS TOGGLE ---
@@ -391,19 +740,33 @@ window.GDXApp = (() => {
         label.textContent = 'Tạm dừng nhận đơn';
       }
     }
+    apiRequest('/api/provider/online-gps', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        provider_id: state.activeProviderId,
+        is_available_online: prov.is_available_online
+      })
+    });
     showToast(`Trạng thái thợ: ${prov.is_available_online ? 'Sẵn sàng trực tuyến' : 'Tạm nghỉ'}`);
   }
 
   function refreshProviderGPS() {
     const prov = window.GDX_DB.provider_profiles.find((p) => p.provider_id === state.activeProviderId);
     if (!prov) return;
-    // Simulate slight movement
     prov.lattitude = Number((prov.lattitude + (Math.random() - 0.5) * 0.002).toFixed(6));
     prov.longtitude = Number((prov.longtitude + (Math.random() - 0.5) * 0.002).toFixed(6));
 
     const gpsEl = document.getElementById('providerGpsText');
     if (gpsEl) gpsEl.textContent = `${prov.lattitude}, ${prov.longtitude}`;
-    showToast(`GPS đã đồng bộ: ${prov.lattitude}, ${prov.longtitude}`);
+    apiRequest('/api/provider/online-gps', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        provider_id: state.activeProviderId,
+        lattitude: prov.lattitude,
+        longtitude: prov.longtitude
+      })
+    });
+    showToast(`Đã cập nhật tọa độ: ${prov.lattitude}, ${prov.longtitude}`);
   }
 
   // =====================================================================
@@ -440,10 +803,10 @@ window.GDXApp = (() => {
             </div>
             <div class="field-group">
               <label class="field-label">Chọn vai trò đăng nhập thử nghiệm:</label>
-              <select name="mockRole" class="select" onchange="GDXApp.setMockLoginRole(this.value)">
+              <select name="mockRole" class="select">
                 <option value="customer" selected>Khách hàng: Nguyễn Minh Thảo (Q.7)</option>
-                <option value="provider">Thợ điều dưỡng: Đặng Thị Mai Lan (Đã duyệt)</option>
-                <option value="provider_pending">Thợ mới: Võ Văn Khải (Chờ duyệt KYC)</option>
+                <option value="provider">Thợ dịch vụ gia đình: Đặng Thị Mai Lan (Đã duyệt)</option>
+                <option value="provider_pending">Thợ mới: Võ Văn Khải (Chờ duyệt hồ sơ)</option>
                 <option value="provider_rejected">Thợ: Ngô Minh Đức (Bị khóa / Từ chối)</option>
                 <option value="admin">Quản trị viên: Nguyễn Quang Hào (Admin)</option>
               </select>
@@ -525,7 +888,7 @@ window.GDXApp = (() => {
       showToast('Đăng nhập thành công với vai trò Khách hàng');
       switchPortal(1);
     } else if (role === 'provider') {
-      showToast('Đăng nhập thành công với vai trò Thợ điều dưỡng');
+      showToast('Đăng nhập thành công với vai trò Đối tác Thợ');
       switchPortal(2);
     } else if (role === 'provider_pending') {
       showToast('Tài khoản thợ đang ở trạng thái chờ duyệt');
@@ -543,6 +906,15 @@ window.GDXApp = (() => {
 
   function handleRegister(form) {
     const role = form.role.value;
+    apiRequest('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_name: form.full_name ? form.full_name.value : '',
+        phone_number: form.phone_number ? form.phone_number.value : '',
+        email: form.email ? form.email.value : '',
+        role
+      })
+    });
     showToast(`Tạo tài khoản ${role} thành công! Chuyển tiếp cấu hình...`);
     if (role === 'customer') {
       go('0.2');
@@ -563,14 +935,14 @@ window.GDXApp = (() => {
       </div>
 
       <div style="max-width: 680px; margin: 20px auto;" class="panel">
-        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.showToast('Hồ sơ khách hàng đã hoàn tất!'); GDXApp.switchPortal(1);">
+        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleCustomerOnboarding(this);">
           <div class="field-group">
-            <label class="field-label">Họ và tên</label>
-            <input type="text" class="input" value="Trần Thị Lan Anh" required>
+            <label class="field-label">Họ và tên (users.full_name)</label>
+            <input type="text" name="full_name" class="input" value="Trần Thị Lan Anh" required>
           </div>
           <div class="field-group">
-            <label class="field-label">Số điện thoại liên hệ</label>
-            <input type="tel" class="input" value="0918776655" required>
+            <label class="field-label">Số điện thoại liên hệ (users.phone_number)</label>
+            <input type="tel" name="phone_number" class="input" value="0918776655" required>
           </div>
           <div class="form-row-2">
             <div class="field-group">
@@ -581,22 +953,22 @@ window.GDXApp = (() => {
             </div>
             <div class="field-group">
               <label class="field-label">Phường / Xã (customer_profiles.ward_id - Bắt buộc)</label>
-              <select class="select" required>
+              <select name="ward_id" class="select" required>
                 ${wards.map((w) => `<option value="${w.ward_id}">${w.name}</option>`).join('')}
               </select>
             </div>
           </div>
           <div class="field-group">
             <label class="field-label">Địa chỉ nhà chi tiết (default_address)</label>
-            <input type="text" class="input" placeholder="Số nhà, tên đường, số căn hộ chung cư..." value="Căn hộ A-1204, Sunrise City, Quận 7">
+            <input type="text" name="default_address" class="input" placeholder="Số nhà, tên đường, số căn hộ chung cư..." value="Căn hộ A-1204, Sunrise City, Quận 7">
           </div>
           <div class="geo-map-canvas">
             <div class="geo-pin-row">
               <span class="status-dot is-online"></span>
-              <span>Tọa độ tự động: 10.741205, 106.702110 (customer_profiles.latitude, longitude)</span>
+              <span>Tọa độ lưu trên hồ sơ: 10.741205, 106.702110 (customer_profiles.latitude, longitude)</span>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm" style="align-self: flex-start; margin-top: 10px;" onclick="GDXApp.showToast('Đã lấy vị trí GPS hiện tại')">
-              Lấy vị trí hiện tại của tôi
+            <button type="button" class="btn btn-secondary btn-sm" style="align-self: flex-start; margin-top: 10px;" onclick="GDXApp.showToast('Đã cập nhật tọa độ mặc định của khách hàng')">
+              Lấy tọa độ vị trí hiện tại
             </button>
           </div>
           <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:16px;">
@@ -607,6 +979,23 @@ window.GDXApp = (() => {
     `;
   }
 
+  function handleCustomerOnboarding(form) {
+    apiRequest('/api/onboarding/customer', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: state.activeUserId,
+        full_name: form.full_name.value,
+        phone_number: form.phone_number.value,
+        ward_id: form.ward_id.value,
+        default_address: form.default_address.value,
+        latitude: 10.741205,
+        longitude: 106.70211
+      })
+    });
+    showToast('Hồ sơ khách hàng đã lưu vào cơ sở dữ liệu!');
+    switchPortal(1);
+  }
+
   // 0.3: Provider Onboarding
   function renderScreen_0_3(container) {
     const svcs = window.GDX_DB.services.filter((s) => s.is_active);
@@ -614,32 +1003,32 @@ window.GDXApp = (() => {
     container.innerHTML = `
       <div class="screen-header">
         <div>
-          <h1 class="screen-title">0.3. Đăng ký hồ sơ hành nghề Thợ (KYC Step Form)</h1>
-          <p class="screen-finding">Bắt buộc CCCD (id_card_number UNIQUE), ảnh đại diện, kỹ năng chuyên môn và khu vực phục vụ.</p>
+          <h1 class="screen-title">0.3. Đăng ký hồ sơ hành nghề Thợ (Provider Onboarding)</h1>
+          <p class="screen-finding">Bắt buộc số CCCD (id_card_number UNIQUE NOT NULL), đường dẫn ảnh đại diện, dịch vụ đăng ký và khu vực phục vụ.</p>
         </div>
       </div>
 
       <div style="max-width: 760px; margin: 20px auto;" class="panel">
-        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.showToast('Hồ sơ đã gửi thành công! Đang chờ Admin duyệt.'); GDXApp.go('0.4', {status:'pending'});">
+        <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleProviderOnboarding(this);">
           <div style="border-bottom: 1px solid var(--app-rule); padding-bottom: 14px;">
-            <h2 class="panel-title">Bước 1: Thông tin định danh &amp; Lý lịch tư pháp</h2>
+            <h2 class="panel-title">Bước 1: Thông tin định danh &amp; Hồ sơ cá nhân</h2>
             <p class="field-hint">Ánh xạ bảng provider_profiles (id_card_number, avatar_url, info)</p>
           </div>
 
           <div class="form-row-2">
             <div class="field-group">
-              <label class="field-label">Số CCCD / CMND (UNIQUE)</label>
-              <input type="text" class="input" placeholder="079xxxxxxxxxx" value="079095023419" required maxlength="20">
+              <label class="field-label">Số CCCD / CMND (id_card_number UNIQUE NOT NULL)</label>
+              <input type="text" name="id_card_number" class="input" placeholder="079xxxxxxxxxx" value="079095023419" required maxlength="20">
             </div>
             <div class="field-group">
-              <label class="field-label">Ảnh chân dung / Avatar</label>
-              <input type="file" class="input" accept="image/*">
+              <label class="field-label">Đường dẫn ảnh đại diện (provider_profiles.avatar_url)</label>
+              <input type="text" name="avatar_url" class="input" value="assets/provider-mai.jpg" required placeholder="assets/provider-mai.jpg">
             </div>
           </div>
 
           <div class="field-group">
-            <label class="field-label">Giới thiệu kinh nghiệm &amp; Bằng cấp y tế / kỹ thuật</label>
-            <textarea class="textarea" rows="3" required placeholder="Mô tả số năm kinh nghiệm, trường đào tạo, chứng chỉ hành nghề...">Cử nhân Điều dưỡng ĐH Y Khoa Phạm Ngọc Thạch, 5 năm kinh nghiệm phục hồi chức năng.</textarea>
+            <label class="field-label">Giới thiệu kinh nghiệm làm việc (provider_profiles.info)</label>
+            <textarea name="info" class="textarea" rows="3" required placeholder="Mô tả số năm kinh nghiệm dọn dẹp nhà cửa, vệ sinh máy lạnh, nấu ăn gia đình...">4 năm kinh nghiệm dọn dẹp nhà cửa theo giờ, vệ sinh máy lạnh treo tường và bảo dưỡng thiết bị gia dụng tại TP.HCM.</textarea>
           </div>
 
           <div style="border-bottom: 1px solid var(--app-rule); padding: 14px 0 6px;">
@@ -681,6 +1070,20 @@ window.GDXApp = (() => {
     `;
   }
 
+  function handleProviderOnboarding(form) {
+    apiRequest('/api/onboarding/provider', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider_id: 204,
+        id_card_number: form.id_card_number.value,
+        avatar_url: form.avatar_url.value,
+        info: form.info.value
+      })
+    });
+    showToast('Hồ sơ đã lưu thành công! Đang chờ Admin xét duyệt.');
+    go('0.4', { status: 'pending' });
+  }
+
   // 0.4: Provider Verification Status
   function renderScreen_0_4(container, params = {}) {
     const isPending = (params.status || 'pending') === 'pending';
@@ -701,13 +1104,13 @@ window.GDXApp = (() => {
           }
         </div>
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 10px;">
-          ${isPending ? 'Hồ sơ đang trong quá trình thẩm định lý lịch' : 'Hồ sơ chưa đạt yêu cầu xác minh'}
+          ${isPending ? 'Hồ sơ đối tác đang chờ Quản trị viên phê duyệt' : 'Hồ sơ đối tác chưa đạt yêu cầu xác minh'}
         </h2>
         <p style="color: var(--app-muted); line-height: 1.6; margin-bottom: 24px;">
           ${
             isPending
-              ? 'Hội đồng chuyên môn của Gia Đình Xanh đang đối soát số CCCD 079095023419 và chứng chỉ y tế của bạn. Thời gian thẩm định từ 2–4 giờ làm việc.'
-              : 'Lý do: Ảnh chụp mặt sau thẻ CCCD bị mờ số và chưa tải kèm chứng chỉ điều dưỡng gốc. Vui lòng cập nhật lại hồ sơ.'
+              ? 'Quản trị viên hệ thống đang kiểm tra thông tin đăng ký (số CCCD 079095023419, mô tả kinh nghiệm và dịch vụ đăng ký) trước khi chuyển trạng thái verification_status sang verified.'
+              : 'Lý do: Số CCCD khai báo chưa chính xác hoặc mô tả kinh nghiệm dịch vụ chưa đầy đủ. Vui lòng cập nhật lại thông tin bên dưới.'
           }
         </p>
 
@@ -717,18 +1120,18 @@ window.GDXApp = (() => {
           <div style="text-align: left; background: var(--app-raised); padding: 18px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Cập nhật lại thông tin (provider_profiles_update_own):</h3>
             <div class="field-group">
-              <label class="field-label">Tải lại ảnh CCCD 2 mặt rõ nét</label>
-              <input type="file" class="input">
+              <label class="field-label">Số CCCD (provider_profiles.id_card_number)</label>
+              <input type="text" class="input" value="079095023419">
             </div>
             <button type="button" class="btn btn-primary btn-sm" style="margin-top: 12px;" onclick="GDXApp.showToast('Đã nộp lại hồ sơ! Chuyển trạng thái sang pending.'); GDXApp.go('0.4', {status:'pending'})">
-              Nộp lại hồ sơ thẩm định
+              Nộp lại hồ sơ xét duyệt
             </button>
           </div>`
             : ''
         }
 
         <div style="display:flex; justify-content:center; gap:12px;">
-          <button type="button" class="btn btn-secondary" onclick="GDXApp.go('0.4', {status: isPending ? 'rejected' : 'pending'})">
+          <button type="button" class="btn btn-secondary dev-only-el" onclick="GDXApp.go('0.4', {status: '${isPending ? 'rejected' : 'pending'}'})">
             Mô phỏng đổi trạng thái (${isPending ? 'Xem màn Rejected' : 'Xem màn Pending'})
           </button>
           <button type="button" class="btn btn-primary" onclick="GDXApp.switchPortal(1)">Về trang chủ</button>
@@ -786,18 +1189,18 @@ window.GDXApp = (() => {
         <article class="charter-sheet" aria-labelledby="charterTitle">
           <div class="charter-top-meta">
             <div><strong>GIA ĐÌNH XANH · NIÊN BIỂU DỊCH VỤ 2026</strong></div>
-            <div>TP. HỒ CHÍ MINH · 100% NHÂN SỰ XÁC MINH LÝ LỊCH TƯ PHÁP</div>
+            <div>TP. HỒ CHÍ MINH · ĐẶT LỊCH DỊCH VỤ GIA ĐÌNH TRỰC TUYẾN</div>
           </div>
 
           <h1 id="charterTitle" class="charter-h1">Thảnh thơi việc nhà, an lòng chăm sóc</h1>
           <p class="charter-lead">
-            Nền tảng đặt dịch vụ điều dưỡng và hỗ trợ tổ ấm tại gia với đội ngũ chuyên nghiệp, minh bạch biểu giá từng giờ và bảo chứng an toàn tuyệt đối.
+            Nền tảng kết nối khách hàng với đội ngũ thợ dọn dẹp nhà cửa, vệ sinh máy lạnh, giặt sofa và nấu ăn gia đình theo lịch hẹn rõ ràng, niêm yết giá minh bạch.
           </p>
 
           <!-- Perforated Live Calculator Stub -->
           <div class="perforated-stub">
             <div style="grid-column: span 4;">
-              <label class="field-label" style="font-size:13px;">Dịch vụ cần chăm sóc</label>
+              <label class="field-label" style="font-size:13px;">Dịch vụ gia đình</label>
               <select id="quickSvcSelect" class="select" onchange="GDXApp.updateQuickStubPrice()">
                 ${svcs.map((s) => `<option value="${s.service_id}" data-price="${s.price}" data-type="${s.pricing_type}">${s.title}</option>`).join('')}
               </select>
@@ -813,7 +1216,7 @@ window.GDXApp = (() => {
             <div style="grid-column: span 3;">
               <label class="field-label" style="font-size:13px;">Đơn giá tham chiếu</label>
               <div id="quickStubPrice" class="price-val" style="font-size: 20px; font-weight: 600; color: var(--accent); padding: 6px 0;">
-                140,000 đ / giờ
+                85.000 đ / giờ
               </div>
             </div>
             <div style="grid-column: span 2;">
@@ -831,7 +1234,7 @@ window.GDXApp = (() => {
               <h2 class="catalog-heading">
                 Biểu phí &amp; Dịch vụ tiêu chuẩn
               </h2>
-              <p style="color: var(--muted); font-size: 14px; margin-top: 4px;">Tất cả dịch vụ đều có hợp đồng bảo hiểm trách nhiệm dân sự 1 tỷ đồng.</p>
+              <p style="color: var(--muted); font-size: 14px; margin-top: 4px;">Đơn giá niêm yết rõ ràng theo giờ hoặc trọn gói theo ca cho từng hạng mục công việc.</p>
             </div>
             <div class="screen-actions">
               <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.go('1.6')">
@@ -870,7 +1273,7 @@ window.GDXApp = (() => {
                           ${isFav ? 'Đã lưu trong mục yêu thích' : 'Lưu vào yêu thích'}
                         </button>
                         <button type="button" class="btn btn-primary btn-sm" onclick="GDXApp.startBookingFromCatalog(${s.service_id})">
-                          Cấu hình đặt lịch &rarr;
+                          Đặt lịch &rarr;
                         </button>
                       </div>
                     </div>`;
@@ -880,6 +1283,29 @@ window.GDXApp = (() => {
               </div>`;
             })
             .join('')}
+        </section>
+
+        <!-- Real User Journey Quick Bar: Active Booking & Partner Registration (Shown in User Mode) -->
+        <section class="menu-catalog-section user-only-el" style="margin-bottom: 0; padding: 28px 36px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
+            <div>
+              <div style="font-weight:600; font-size:16px; color:var(--ink);">Ca dịch vụ đang diễn ra tại nhà bạn</div>
+              <p style="font-size:14px; color:var(--muted); margin-top:4px;">
+                Đơn #1042 · Dọn dẹp nhà cửa theo giờ tiêu chuẩn · Thợ phụ trách: Đặng Thị Mai Lan
+              </p>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary btn-sm" onclick="GDXApp.go('1.3', {booking_id: 1042})">
+                Theo dõi ca làm &amp; Thanh toán &rarr;
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.go('1.4')">
+                Xem tất cả lịch hẹn
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.switchPortal(0, '0.3')">
+                Đăng ký làm Đối tác Thợ
+              </button>
+            </div>
+          </div>
         </section>
       </div>
     `;
@@ -916,6 +1342,13 @@ window.GDXApp = (() => {
       });
       showToast('Đã lưu dịch vụ vào mục Yêu thích');
     }
+    apiRequest('/api/favorites/toggle', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer_id: state.activeCustomerId,
+        service_id: sid
+      })
+    });
     renderScreen_1_1(document.getElementById('mainViewport'));
   }
 
@@ -1116,6 +1549,23 @@ window.GDXApp = (() => {
       created_at: new Date().toISOString(),
     });
 
+    apiRequest('/api/bookings', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer_id: newBooking.customer_id,
+        provider_id: newBooking.provider_id,
+        service_id: newBooking.service_id,
+        scheduled_time: newBooking.scheduled_time,
+        address: newBooking.address,
+        ward_id: newBooking.ward_id,
+        latitude: newBooking.latitude,
+        longitude: newBooking.longitude,
+        total_amount: newBooking.total_amount,
+        notes: newBooking.notes,
+        changed_by: state.activeUserId
+      })
+    });
+
     state.activeBookingId = newBooking.booking_id;
     showToast(`Đã tạo thành công đơn hàng #${newBooking.booking_id}!`);
     go('1.3', { booking_id: newBooking.booking_id });
@@ -1191,7 +1641,7 @@ window.GDXApp = (() => {
                 <span><strong>Thợ (${prov ? prov.full_name : 'Thợ'}):</strong> Đang ở tọa độ ${prov ? prov.lattitude : '10.7312'}, ${prov ? prov.longtitude : '106.7159'}</span>
               </div>
               <div style="font-size:12px; color:var(--app-muted); margin-top:8px;">
-                Cập nhật vị trí GPS thời gian thực từ bảng <code>provider_profiles (lattitude, longtitude)</code>
+                Tọa độ vị trí lưu trên hệ thống từ bảng <code>provider_profiles (lattitude, longtitude)</code>
               </div>
             </div>
 
@@ -1410,6 +1860,14 @@ window.GDXApp = (() => {
     if (u) {
       u.full_name = form.full_name.value;
       u.phone_number = form.phone_number.value;
+      apiRequest('/api/profile/customer', {
+        method: 'PUT',
+        body: JSON.stringify({
+          customer_id: state.activeCustomerId,
+          full_name: u.full_name,
+          phone_number: u.phone_number
+        })
+      });
       showToast('Đã cập nhật thông tin cá nhân!');
     }
   }
@@ -1420,6 +1878,14 @@ window.GDXApp = (() => {
     if (cp) {
       cp.ward_id = form.ward_id.value;
       cp.default_address = form.default_address.value;
+      apiRequest('/api/profile/customer', {
+        method: 'PUT',
+        body: JSON.stringify({
+          customer_id: state.activeCustomerId,
+          ward_id: cp.ward_id,
+          default_address: cp.default_address
+        })
+      });
       showToast('Đã lưu sổ địa chỉ mặc định!');
     }
   }
@@ -1771,7 +2237,7 @@ window.GDXApp = (() => {
       <div class="settings-split-row">
         <div class="settings-meta-col">
           <h2>Hồ sơ đối tác hành nghề</h2>
-          <p>Số CCCD đã được xác minh lý lịch tư pháp không thể chỉnh sửa.</p>
+          <p>Số CCCD định danh trên hệ thống (id_card_number).</p>
         </div>
         <div class="settings-panel-col form-stack">
           <div class="form-row-2">
@@ -1786,7 +2252,7 @@ window.GDXApp = (() => {
           </div>
           <div class="field-group">
             <label class="field-label">Mô tả kinh nghiệm &amp; Giới thiệu (provider_profiles.info)</label>
-            <textarea class="textarea" rows="2">${prov ? prov.info : ''}</textarea>
+            <textarea id="provCapInfo" class="textarea" rows="2">${prov ? prov.info : ''}</textarea>
           </div>
         </div>
       </div>
@@ -1794,7 +2260,7 @@ window.GDXApp = (() => {
       <div class="settings-split-row">
         <div class="settings-meta-col">
           <h2>Danh mục dịch vụ tiếp nhận</h2>
-          <p>Chọn các dịch vụ có chứng chỉ nghiệp vụ (provider_services).</p>
+          <p>Chọn các dịch vụ gia đình bạn nhận thực hiện (provider_services).</p>
         </div>
         <div class="settings-panel-col">
           <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:10px;">
@@ -1829,12 +2295,42 @@ window.GDXApp = (() => {
               )
               .join('')}
           </div>
-          <button type="button" class="btn btn-primary" style="margin-top:16px;" onclick="GDXApp.showToast('Đã lưu cấu hình năng lực & địa bàn thành công!')">
+          <button type="button" class="btn btn-primary" style="margin-top:16px;" onclick="GDXApp.saveProviderCapabilities()">
             Lưu thay đổi năng lực
           </button>
         </div>
       </div>
     `;
+  }
+
+  function saveProviderCapabilities() {
+    const infoEl = document.getElementById('provCapInfo');
+    const selectedSvcs = Array.from(document.querySelectorAll('input[name="provServices"]:checked')).map((el) => Number(el.value));
+    const selectedWards = Array.from(document.querySelectorAll('input[name="provAreas"]:checked')).map((el) => el.value);
+    const db = window.GDX_DB;
+    const prov = db.provider_profiles.find((p) => p.provider_id === state.activeProviderId);
+    if (prov && infoEl) prov.info = infoEl.value;
+
+    db.provider_services = db.provider_services.filter((ps) => ps.provider_id !== state.activeProviderId);
+    selectedSvcs.forEach((sid, idx) => {
+      db.provider_services.push({ id_pro_ser: Date.now() + idx, provider_id: state.activeProviderId, service_id: sid });
+    });
+
+    db.provider_areas = db.provider_areas.filter((pa) => pa.provider_id !== state.activeProviderId);
+    selectedWards.forEach((wid, idx) => {
+      db.provider_areas.push({ area_id: Date.now() + idx, provider_id: state.activeProviderId, ward_id: wid });
+    });
+
+    apiRequest('/api/provider/capabilities', {
+      method: 'PUT',
+      body: JSON.stringify({
+        provider_id: state.activeProviderId,
+        info: infoEl ? infoEl.value : '',
+        service_ids: selectedSvcs,
+        ward_ids: selectedWards
+      })
+    });
+    showToast('Đã lưu cấu hình năng lực & địa bàn vào cơ sở dữ liệu!');
   }
 
   // =====================================================================
@@ -1896,11 +2392,11 @@ window.GDXApp = (() => {
         </div>
         <div class="col-5">
           <div class="panel form-stack">
-            <h2 class="panel-title">Bản đồ nhiệt điều phối vị trí Thợ &amp; Khách</h2>
+            <h2 class="panel-title">Tổng hợp tọa độ vị trí Thợ &amp; Địa chỉ đơn hàng</h2>
             <div class="geo-map-canvas" style="min-height: 220px;">
               <div class="geo-pin-row">
                 <span class="status-dot is-online"></span>
-                <span>3 Thợ verified đang trực tuyến tại Q.7 &amp; TP. Thủ Đức</span>
+                <span>3 Thợ verified đang bật trạng thái nhận việc tại Q.7 &amp; TP. Thủ Đức</span>
               </div>
               <div class="geo-pin-row">
                 <span class="status-dot is-online" style="background:var(--negative);"></span>
@@ -1916,7 +2412,7 @@ window.GDXApp = (() => {
         <div class="panel-header">
           <h2 class="panel-title">Danh sách đơn hàng cần giám sát điều phối</h2>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Danh sách đơn hàng điều phối">
           <table class="data-table">
             <thead>
               <tr>
@@ -2002,7 +2498,7 @@ window.GDXApp = (() => {
       <!-- Categories Table -->
       <div class="panel" style="margin-bottom: 24px;">
         <h2 class="panel-title" style="margin-bottom: 12px;">Cây danh mục dịch vụ (service_categories)</h2>
-        <div class="table-wrap">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Cây danh mục dịch vụ">
           <table class="data-table">
             <thead>
               <tr>
@@ -2025,7 +2521,7 @@ window.GDXApp = (() => {
                   <td class="mono-id">${c.slug}</td>
                   <td>
                     <label style="display:flex; align-items:center; gap:6px;">
-                      <input type="checkbox" ${c.status ? 'checked' : ''} onchange="c.status = this.checked; GDXApp.showToast('Đã đổi trạng thái danh mục')">
+                      <input type="checkbox" ${c.status ? 'checked' : ''} onchange="GDXApp.adminToggleCategory(${c.category_id}, this.checked)">
                       <span>${c.status ? 'Hiển thị' : 'Ẩn'}</span>
                     </label>
                   </td>
@@ -2043,7 +2539,7 @@ window.GDXApp = (() => {
       <!-- Services Table -->
       <div class="panel">
         <h2 class="panel-title" style="margin-bottom: 12px;">Bảng dịch vụ chi tiết (services)</h2>
-        <div class="table-wrap">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Bảng dịch vụ chi tiết">
           <table class="data-table">
             <thead>
               <tr>
@@ -2071,7 +2567,7 @@ window.GDXApp = (() => {
                   <td>${s.estimated_duration} phút</td>
                   <td>
                     <label style="display:flex; align-items:center; gap:6px;">
-                      <input type="checkbox" ${s.is_active ? 'checked' : ''} onchange="s.is_active = this.checked; GDXApp.showToast('Đã cập nhật is_active dịch vụ')">
+                      <input type="checkbox" ${s.is_active ? 'checked' : ''} onchange="GDXApp.adminToggleService(${s.service_id}, this.checked)">
                       <span>${s.is_active ? 'Kích hoạt' : 'Tạm tắt'}</span>
                     </label>
                   </td>
@@ -2086,6 +2582,26 @@ window.GDXApp = (() => {
         </div>
       </div>
     `;
+  }
+
+  function adminToggleCategory(categoryId, status) {
+    const c = window.GDX_DB.service_categories.find((x) => x.category_id === Number(categoryId));
+    if (c) c.status = status;
+    apiRequest(`/api/admin/categories/${categoryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    });
+    showToast('Đã cập nhật trạng thái danh mục!');
+  }
+
+  function adminToggleService(serviceId, isActive) {
+    const s = window.GDX_DB.services.find((x) => x.service_id === Number(serviceId));
+    if (s) s.is_active = isActive;
+    apiRequest(`/api/admin/services/${serviceId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: isActive })
+    });
+    showToast('Đã cập nhật trạng thái is_active của dịch vụ!');
   }
 
   // 3.3: Partner KYC Verification
@@ -2183,9 +2699,24 @@ window.GDXApp = (() => {
     if (prov) {
       prov.verification_status = status;
       prov.updated_at = new Date().toISOString();
+      apiRequest(`/api/admin/kyc/${providerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ verification_status: status })
+      });
       showToast(`Hồ sơ thợ #${providerId} đã chuyển sang ${status.toUpperCase()}!`);
       go('3.3', { filter: status });
     }
+  }
+
+  function adminToggleUserActive(userId, isActive) {
+    const u = window.GDX_DB.users.find((x) => x.user_id === userId);
+    if (u) u.is_active = isActive;
+    apiRequest(`/api/admin/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: isActive })
+    });
+    showToast('Đã cập nhật trạng thái hoạt động của tài khoản!');
+    go('3.4', { tab: 'users' });
   }
 
   // 3.4: User Management & Dispute Resolution (Split Tabs)
@@ -2212,7 +2743,7 @@ window.GDXApp = (() => {
           tab === 'users'
             ? `
           <div class="panel">
-            <div class="table-wrap">
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Bảng người dùng">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -2236,7 +2767,7 @@ window.GDXApp = (() => {
                       <td class="stamp">${formatDateTime(u.created_at)}</td>
                       <td>
                         <label style="display:flex; align-items:center; gap:8px;">
-                          <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="u.is_active = this.checked; GDXApp.showToast('Đã cập nhật trạng thái tài khoản')">
+                          <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="GDXApp.adminToggleUserActive('${u.user_id}', this.checked)">
                           <span style="color:${u.is_active ? 'var(--positive)' : 'var(--negative)'}; font-weight:600;">
                             ${u.is_active ? 'Hoạt động' : 'Đã khóa'}
                           </span>
@@ -2252,7 +2783,7 @@ window.GDXApp = (() => {
             : tab === 'tickets'
             ? `
           <div class="panel">
-            <div class="table-wrap">
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Bảng phiếu hỗ trợ">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -2296,7 +2827,7 @@ window.GDXApp = (() => {
           </div>`
             : `
           <div class="panel">
-            <div class="table-wrap">
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Bảng kiểm duyệt đánh giá">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -2340,37 +2871,46 @@ window.GDXApp = (() => {
       const pId = db.reviews[idx].provider_id;
       db.reviews.splice(idx, 1);
       db.refreshProviderRating(pId);
+      apiRequest(`/api/reviews/${reviewId}`, { method: 'DELETE' });
       showToast('Đã xóa đánh giá vi phạm và tự động tính lại điểm thợ!');
       go('3.4', { tab: 'reviews' });
     }
   }
 
   // =====================================================================
-  // MODAL / DRAWER RENDERERS (All 15 Modals)
+  // MODAL / DRAWER RENDERERS (All 15 Modals + Supabase Status + Catalog)
   // =====================================================================
 
   function openModal(modalId, params = {}) {
     state.activeModal = modalId;
-    const backdrop = document.getElementById('modalBackdrop');
     const dialog = document.getElementById('modalDialog');
     const titleEl = document.getElementById('modalTitle');
     const subEl = document.getElementById('modalSub');
     const bodyEl = document.getElementById('modalBody');
 
-    if (!backdrop || !dialog || !titleEl || !bodyEl) return;
+    if (!dialog || !titleEl || !bodyEl) return;
 
-    const meta = SCREENS[modalId] || { title: `Hộp thoại ${modalId}`, table: 'PostgreSQL' };
+    const meta =
+      modalId === 'SUPABASE_STATUS'
+        ? { title: 'Kết nối Backend API & Supabase (.env.local)', table: '16 PostgreSQL Tables + 4 RPCs', type: 'modal' }
+        : modalId === 'CATALOG'
+        ? { title: 'Ma trận 34 Giao diện (19 Pages + 15 Modals)', table: 'Toàn bộ lược đồ 16 bảng PostgreSQL', type: 'modal' }
+        : SCREENS[modalId] || { title: `Hộp thoại ${modalId}`, table: 'PostgreSQL', type: 'modal' };
+
     titleEl.textContent = meta.title;
     if (subEl) subEl.textContent = `Bảng liên quan: ${meta.table}`;
 
-    // Apply drawer class if type is drawer
     if (meta.type === 'drawer') {
       dialog.classList.add('is-drawer');
     } else {
       dialog.classList.remove('is-drawer');
     }
 
-    backdrop.hidden = false;
+    if (typeof dialog.showModal === 'function') {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
 
     // Render modal content
     switch (modalId) {
@@ -2388,15 +2928,24 @@ window.GDXApp = (() => {
       case '3.7': renderModal_3_7(bodyEl, params); break;
       case '3.8': renderModal_3_8(bodyEl, params); break;
       case '3.9': renderModal_3_9(bodyEl, params); break;
+      case 'SUPABASE_STATUS': renderModal_SupabaseStatus(bodyEl); break;
       case 'CATALOG': renderModal_Catalog(bodyEl); break;
       default:
         bodyEl.innerHTML = `<div>Đang phát triển nội dung modal ${modalId}</div>`;
     }
+
+    applyUserModeCleanups(dialog, modalId);
   }
 
   function closeModal() {
-    const backdrop = document.getElementById('modalBackdrop');
-    if (backdrop) backdrop.hidden = true;
+    const dialog = document.getElementById('modalDialog');
+    if (dialog) {
+      if (typeof dialog.close === 'function' && dialog.open) {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
+    }
     state.activeModal = null;
   }
 
@@ -2498,18 +3047,13 @@ window.GDXApp = (() => {
           </div>
         </div>
 
-        <div style="text-align:center; padding:16px; border:1px dashed var(--app-border); border-radius:8px;">
-          <div style="font-weight:600; margin-bottom:10px;">Quét mã QR VietQR / SePay</div>
-          <!-- SVG QR Code Placeholder -->
-          <svg width="140" height="140" viewBox="0 0 100 100" style="margin:0 auto; display:block;" aria-label="QR Code">
-            <rect width="100" height="100" fill="#fff" />
-            <path d="M10 10h30v30h-30z M60 10h30v30h-30z M10 60h30v30h-30z M20 20h10v10h-10z M70 20h10v10h-10z M20 70h10v10h-10z M45 20h10v30h-10z M45 60h30v10h-30z M60 75h20v15h-20z" fill="#000" />
-          </svg>
+        <div style="padding:16px; border:1px dashed var(--app-border); border-radius:8px; background:var(--app-surface);">
+          <div style="font-weight:600; margin-bottom:6px;">Xác nhận nghiệm thu &amp; Thanh toán hóa đơn</div>
+          <p style="font-size:13px; color:var(--app-muted); line-height:1.5;">
+            Sau khi nghiệm thu công việc với thợ thực hiện, quý khách vui lòng thanh toán trực tiếp hoặc chuyển khoản theo thỏa thuận và bấm xác nhận bên dưới để hệ thống cập nhật <code>bookings.payment_status = 'paid'</code> qua hàm RPC <code>rpc_customer_confirm_payment</code>.
+          </p>
           <div style="font-size:12px; color:var(--app-muted); margin-top:8px;">
-            Số tài khoản: <strong>0908341289</strong> · Ngân hàng: <strong>MBBank</strong>
-          </div>
-          <div style="font-size:12px; color:var(--app-muted);">
-            Nội dung chuyển khoản: <strong class="mono-id">GDX ${b.booking_id}</strong>
+            Mã tham chiếu đơn hàng: <strong class="mono-id">GDX-${b.booking_id}</strong>
           </div>
         </div>
 
@@ -2587,6 +3131,15 @@ window.GDXApp = (() => {
     db.reviews.unshift(newRev);
     db.refreshProviderRating(providerId);
 
+    apiRequest('/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        booking_id: Number(bookingId),
+        rating: Number(form.rating.value),
+        comment: form.comment.value
+      })
+    });
+
     showToast('Cảm ơn bạn! Đánh giá đã được ghi nhận và điểm thợ đã được cập nhật.');
     closeModal();
     go('1.4');
@@ -2598,7 +3151,7 @@ window.GDXApp = (() => {
     container.innerHTML = `
       <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleCustomerCancel(this, ${bId});">
         <div style="background:var(--pill-negative-bg); color:var(--pill-negative-ink); padding:12px; border-radius:6px; font-size:13px;">
-          Lưu ý: Hủy ca sát giờ làm việc có thể ảnh hưởng đến lịch trình của nhân viên điều dưỡng.
+          Lưu ý: Hủy ca sát giờ hẹn có thể ảnh hưởng đến lịch làm việc của thợ thực hiện dịch vụ.
         </div>
 
         <div class="field-group">
@@ -2711,6 +3264,15 @@ window.GDXApp = (() => {
     };
 
     db.support_tickets.unshift(newT);
+    apiRequest('/api/support-tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: state.activeUserId,
+        booking_id: bId,
+        subject: form.subject.value,
+        priority: form.priority.value
+      })
+    });
     showToast(`Đã gửi thành công phiếu hỗ trợ #${newT.ticket_id}!`);
     renderModal_1_11(document.getElementById('modalBody'), { booking_id: bId });
   }
@@ -2835,13 +3397,18 @@ window.GDXApp = (() => {
 
   function addSchedule(form) {
     const db = window.GDX_DB;
-    db.availability_schedules.push({
+    const row = {
       id: Date.now(),
       provider_id: state.activeProviderId,
       day_of_week: Number(form.day_of_week.value),
       start_time: form.start_time.value,
       end_time: form.end_time.value,
       updated_at: new Date().toISOString(),
+    };
+    db.availability_schedules.push(row);
+    apiRequest('/api/schedules', {
+      method: 'POST',
+      body: JSON.stringify(row)
     });
     showToast('Đã lưu khung giờ làm việc cố định!');
     renderModal_2_6(document.getElementById('modalBody'));
@@ -2852,6 +3419,7 @@ window.GDXApp = (() => {
     const idx = db.availability_schedules.findIndex((s) => s.id === Number(id));
     if (idx >= 0) {
       db.availability_schedules.splice(idx, 1);
+      apiRequest(`/api/schedules/${id}`, { method: 'DELETE' });
       showToast('Đã xóa khung giờ làm.');
       renderModal_2_6(document.getElementById('modalBody'));
     }
@@ -2859,7 +3427,7 @@ window.GDXApp = (() => {
 
   function addException(form) {
     const db = window.GDX_DB;
-    db.availability_exceptions.push({
+    const row = {
       id: Date.now(),
       provider_id: state.activeProviderId,
       exception_date: form.exception_date.value,
@@ -2867,6 +3435,11 @@ window.GDXApp = (() => {
       end_time: form.end_time.value,
       reason: form.reason.value,
       created_at: new Date().toISOString(),
+    };
+    db.availability_exceptions.push(row);
+    apiRequest('/api/exceptions', {
+      method: 'POST',
+      body: JSON.stringify(row)
     });
     showToast('Đã thêm lịch nghỉ phép đột xuất!');
     setSchedTab('exception');
@@ -2882,7 +3455,7 @@ window.GDXApp = (() => {
       <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.handleSaveIncidental(this, ${b.booking_id});">
         <div>
           <div>Đơn hàng tác nghiệp: <strong class="mono-id">#${b.booking_id}</strong></div>
-          <p class="field-hint">Kê khai vật tư mua thêm tại nhà thuốc / siêu thị (bookings.total_incidental).</p>
+          <p class="field-hint">Kê khai chi phí vật tư vệ sinh hoặc nguyên liệu mua hộ theo yêu cầu chủ nhà (bookings.total_incidental).</p>
         </div>
 
         <div class="field-group">
@@ -2891,8 +3464,8 @@ window.GDXApp = (() => {
         </div>
 
         <div class="field-group">
-          <label class="field-label">Lý do &amp; Hóa đơn đính kèm (ghi chú vào bookings.notes)</label>
-          <textarea name="notes" class="textarea" rows="2" required placeholder="Mua thêm hộp que thử đường huyết Accu-Chek, cồn 70 độ...">Mua thêm que thử đường huyết tại hiệu thuốc</textarea>
+          <label class="field-label">Ghi chú hạng mục phát sinh (lưu vào bookings.notes)</label>
+          <textarea name="notes" class="textarea" rows="2" required placeholder="Mua bổ sung túi rác phân loại, nước lau kính hoặc nguyên liệu nấu ăn theo yêu cầu chủ nhà...">Mua bổ sung túi rác phân loại và chai nước lau kính theo yêu cầu chủ nhà</textarea>
         </div>
 
         <div class="modal-footer">
@@ -2955,7 +3528,7 @@ window.GDXApp = (() => {
     container.innerHTML = `
       <form class="form-stack" onsubmit="event.preventDefault(); GDXApp.submitEmergencyTicket(this, ${bId});">
         <div style="background:var(--pill-negative-bg); color:var(--pill-negative-ink); padding:12px; border-radius:6px; font-size:13px;">
-          Báo cáo khẩn cấp gửi trực tiếp đến Ban điều phối Admin trực ban 24/7 (priority = urgent).
+          Tạo phiếu hỗ trợ mức độ ưu tiên cao (priority = 'urgent') gửi tới Quản trị viên hệ thống trên bảng <code>support_tickets</code>.
         </div>
 
         <div class="field-group">
@@ -2965,12 +3538,12 @@ window.GDXApp = (() => {
 
         <div class="field-group">
           <label class="field-label">Mô tả sự cố tại hiện trường (support_tickets.subject)</label>
-          <textarea name="subject" class="textarea" rows="3" required placeholder="Khách hàng không mở cửa, địa chỉ giả mạo, tai nạn giao thông trên đường đến..."></textarea>
+          <textarea name="subject" class="textarea" rows="3" required placeholder="Khách hàng không liên lạc được khi đến giờ hẹn, tòa nhà đang bảo trì điện nước..."></textarea>
         </div>
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="GDXApp.closeModal()">Hủy</button>
-          <button type="submit" class="btn btn-danger">Gửi báo cáo khẩn cấp ngay &rarr;</button>
+          <button type="submit" class="btn btn-danger">Gửi phiếu hỗ trợ khẩn &rarr;</button>
         </div>
       </form>
     `;
@@ -2989,7 +3562,17 @@ window.GDXApp = (() => {
       updated_at: new Date().toISOString(),
     });
 
-    showToast('Đã gửi báo cáo khẩn cấp đến đội ngũ quản trị Admin!');
+    apiRequest('/api/support-tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: state.activeUserId,
+        booking_id: Number(bookingId),
+        subject: form.subject.value,
+        priority: 'urgent'
+      })
+    });
+
+    showToast('Đã gửi phiếu hỗ trợ ưu tiên cao đến Quản trị viên!');
     closeModal();
   }
 
@@ -3179,6 +3762,13 @@ window.GDXApp = (() => {
       t.priority = form.priority.value;
       t.status = form.status.value;
       t.updated_at = new Date().toISOString();
+      apiRequest(`/api/support-tickets/${ticketId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          priority: t.priority,
+          status: t.status
+        })
+      });
       showToast(`Đã cập nhật trạng thái phiếu #${ticketId}!`);
       closeModal();
       go('3.4', { tab: 'tickets' });
@@ -3201,8 +3791,8 @@ window.GDXApp = (() => {
           isService
             ? `
           <div class="field-group">
-            <label class="field-label">Tên dịch vụ (title - Bắt buộc)</label>
-            <input type="text" name="title" class="input" required placeholder="Ví dụ: Chăm sóc vết mổ sau sinh">
+            <label class="field-label">Tên dịch vụ (services.name - Bắt buộc)</label>
+            <input type="text" name="title" class="input" required placeholder="Ví dụ: Vệ sinh rèm cửa và thảm phòng khách">
           </div>
           <div class="form-row-2">
             <div class="field-group">
@@ -3212,8 +3802,8 @@ window.GDXApp = (() => {
               </select>
             </div>
             <div class="field-group">
-              <label class="field-label">Giá niêm yết (price >= 0)</label>
-              <input type="number" name="price" class="input" value="350000" min="0" required>
+              <label class="field-label">Giá niêm yết (base_price >= 0)</label>
+              <input type="number" name="price" class="input" value="250000" min="0" required>
             </div>
           </div>
           <div class="form-row-2">
@@ -3231,16 +3821,16 @@ window.GDXApp = (() => {
           </div>
           <div class="field-group">
             <label class="field-label">Mô tả dịch vụ</label>
-            <textarea name="description" class="textarea" rows="2">Mô tả quy trình dịch vụ và vật tư bao gồm...</textarea>
+            <textarea name="description" class="textarea" rows="2">Mô tả quy trình thực hiện dịch vụ gia đình...</textarea>
           </div>`
             : `
           <div class="field-group">
-            <label class="field-label">Tên danh mục (category_name)</label>
-            <input type="text" name="category_name" class="input" required value="Chăm sóc Phục hồi chức năng">
+            <label class="field-label">Tên danh mục (service_categories.name)</label>
+            <input type="text" name="category_name" class="input" required value="Chăm sóc Thiết bị &amp; Nội trợ">
           </div>
           <div class="field-group">
             <label class="field-label">Slug</label>
-            <input type="text" name="slug" class="input" required value="phuc-hoi-chuc-nang">
+            <input type="text" name="slug" class="input" required value="cham-soc-thiet-bi-noi-tro">
           </div>`
         }
 
@@ -3255,7 +3845,7 @@ window.GDXApp = (() => {
   function saveServiceOrCategory(form, isService) {
     const db = window.GDX_DB;
     if (isService) {
-      db.services.push({
+      const row = {
         service_id: 300 + db.services.length + 1,
         category_id: Number(form.category_id.value),
         title: form.title.value,
@@ -3267,8 +3857,29 @@ window.GDXApp = (() => {
         image_url: 'assets/service-cleaning.jpg',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+      };
+      db.services.push(row);
+      apiRequest('/api/admin/services', {
+        method: 'POST',
+        body: JSON.stringify(row)
       });
       showToast('Đã thêm dịch vụ mới vào cơ sở dữ liệu!');
+    } else {
+      const cat = {
+        category_id: 10 + db.service_categories.length + 1,
+        parent_id: null,
+        category_name: form.category_name.value,
+        slug: form.slug.value,
+        description: '',
+        icon_url: 'home-clean',
+        status: true
+      };
+      db.service_categories.push(cat);
+      apiRequest('/api/admin/categories', {
+        method: 'POST',
+        body: JSON.stringify(cat)
+      });
+      showToast('Đã thêm danh mục mới vào cơ sở dữ liệu!');
     }
     closeModal();
     go('3.2');
@@ -3284,7 +3895,7 @@ window.GDXApp = (() => {
           <p class="field-hint">Bảng province, ward (khóa ngoại ON DELETE RESTRICT chặt chẽ).</p>
         </div>
 
-        <div class="table-wrap" style="max-height:220px; overflow-y:auto;">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Bảng Phường/Xã" style="max-height:220px; overflow-y:auto;">
           <table class="data-table">
             <thead>
               <tr>
@@ -3331,13 +3942,94 @@ window.GDXApp = (() => {
 
   function addWard(form) {
     const db = window.GDX_DB;
-    db.ward.push({
+    const row = {
       ward_id: form.ward_id.value,
       name: form.name.value,
       provinceId: '79',
+    };
+    db.ward.push(row);
+    apiRequest('/api/admin/locations', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'ward', ...row })
     });
     showToast(`Đã thêm phường ${form.name.value}!`);
     renderModal_3_9(document.getElementById('modalBody'));
+  }
+
+  // SUPABASE & BACKEND STATUS MODAL (.env.local Configuration Inspector)
+  function openSupabaseStatusModal() {
+    apiRequest('/api/status').then((res) => {
+      if (res && res.ok) state.backendStatus = res;
+      openModal('SUPABASE_STATUS');
+    });
+  }
+
+  function renderModal_SupabaseStatus(container) {
+    const st = state.backendStatus || {};
+    const counts = st.tableCounts || {};
+    container.innerHTML = `
+      <div class="form-stack">
+        <div style="background:var(--app-raised); padding:16px; border-radius:8px; font-size:13px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong>Chế độ vận hành Backend:</strong>
+            <span class="badge ${st.supabaseReachable ? 'badge-positive' : 'badge-info'}">
+              ${st.supabaseReachable ? 'SUPABASE CLOUD CONNECTED' : 'LOCAL SQL STORE (.env.local ready)'}
+            </span>
+          </div>
+          <p style="color:var(--app-muted); line-height:1.5;">${st.message || 'Server Node.js đang hoạt động.'}</p>
+        </div>
+
+        <div style="border:1px solid var(--app-border); padding:14px; border-radius:8px; font-size:13px;">
+          <h3 style="font-size:14px; font-weight:600; margin-bottom:8px;">Trạng thái biến môi trường trong <code>.env.local</code></h3>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between;">
+              <span class="mono-id">NEXT_PUBLIC_SUPABASE_URL</span>
+              <span class="badge ${st.hasSupabaseUrl ? 'badge-positive' : 'badge-warning'}">${st.hasSupabaseUrl ? 'Đã điền' : 'Đang để trống'}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+              <span class="mono-id">NEXT_PUBLIC_SUPABASE_ANON_KEY</span>
+              <span class="badge ${st.hasAnonKey ? 'badge-positive' : 'badge-warning'}">${st.hasAnonKey ? 'Đã điền' : 'Đang để trống'}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+              <span class="mono-id">SUPABASE_SERVICE_ROLE_KEY</span>
+              <span class="badge ${st.hasServiceRoleKey ? 'badge-positive' : 'badge-neutral'}">${st.hasServiceRoleKey ? 'Đã điền' : 'Tùy chọn (Đang trống)'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--app-border); padding:14px; border-radius:8px; font-size:13px;">
+          <h3 style="font-size:14px; font-weight:600; margin-bottom:8px;">Số bản ghi hiện tại trên Backend (16 Bảng SQL)</h3>
+          <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:6px;">
+            <div>province: <strong>${counts.province ?? window.GDX_DB.province.length}</strong></div>
+            <div>ward: <strong>${counts.ward ?? window.GDX_DB.ward.length}</strong></div>
+            <div>users: <strong>${counts.users ?? window.GDX_DB.users.length}</strong></div>
+            <div>provider_profiles: <strong>${counts.provider_profiles ?? window.GDX_DB.provider_profiles.length}</strong></div>
+            <div>service_categories: <strong>${counts.service_categories ?? window.GDX_DB.service_categories.length}</strong></div>
+            <div>services: <strong>${counts.services ?? window.GDX_DB.services.length}</strong></div>
+            <div>bookings: <strong>${counts.bookings ?? window.GDX_DB.bookings.length}</strong></div>
+            <div>support_tickets: <strong>${counts.support_tickets ?? window.GDX_DB.support_tickets.length}</strong></div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.resetBackendDatabase()">
+            Khôi phục dữ liệu mẫu mặc định
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="GDXApp.syncWithBackend(); GDXApp.showToast('Đã kiểm tra lại .env.local & đồng bộ dữ liệu!'); GDXApp.closeModal();">
+            Kiểm tra lại .env.local &amp; Đồng bộ
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function resetBackendDatabase() {
+    const res = await apiRequest('/api/supabase/reset-local', { method: 'POST' });
+    if (res && res.ok) {
+      await syncWithBackend();
+      showToast(res.message || 'Đã khôi phục dữ liệu mặc định!');
+      closeModal();
+    }
   }
 
   // Master Catalog Modal: 34 UI Elements Matrix
@@ -3389,8 +4081,19 @@ window.GDXApp = (() => {
 
   // --- INITIALIZATION ---
   function init() {
-    switchPortal(1);
-    go('1.1');
+    document.body.setAttribute('data-view-mode', state.viewMode);
+
+    // Progressive enhancement light-dismiss for <dialog closedby="any">
+    const dialog = document.getElementById('modalDialog');
+    if (dialog && !('closedBy' in dialog)) {
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) closeModal();
+      });
+    }
+
+    renderUserTopbar();
+    switchPortal(1, '1.1');
+    syncWithBackend();
   }
 
   // Auto initialize on DOMContentLoaded
@@ -3404,15 +4107,23 @@ window.GDXApp = (() => {
     state,
     go,
     switchPortal,
+    setViewMode,
+    goHomeByRole,
+    handleUserAccountClick,
     openModal,
     closeModal,
     showToast,
     toggleProviderOnline,
     refreshProviderGPS,
     openScreenCatalogModal,
+    openSupabaseStatusModal,
+    resetBackendDatabase,
+    syncWithBackend,
     setAuthTab,
     handleLogin,
     handleRegister,
+    handleCustomerOnboarding,
+    handleProviderOnboarding,
     updateQuickStubPrice,
     startBookingFromCatalog,
     toggleFavorite,
@@ -3422,11 +4133,15 @@ window.GDXApp = (() => {
     confirmBookingCreation,
     saveUserProfile,
     saveCustomerAddress,
+    saveProviderCapabilities,
     providerAcceptJob,
     startShiftWork,
     toggleTimerPause,
     completeShiftWork,
     adminVerifyKYC,
+    adminToggleUserActive,
+    adminToggleCategory,
+    adminToggleService,
     deleteReview,
     handleConfirmPayment,
     submitReview,

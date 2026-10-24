@@ -3,30 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Gia Đình Xanh · Hệ Thống Đặt Lịch Dịch Vụ Gia Đình (34 Giao Diện Chuẩn Supabase SQL)</title>
-  <meta name="description" content="Hệ thống đặt lịch dịch vụ chăm sóc gia đình tại nhà — 34 màn hình và hộp thoại ánh xạ 1-1 với 16 bảng PostgreSQL và cơ chế phân quyền RLS.">
+  <title>Gia Đình Xanh · Đặt Lịch Dịch Vụ Chăm Sóc Nhà Cửa Tại Gia</title>
+  <meta name="description" content="Nền tảng đặt lịch dọn dẹp nhà cửa theo giờ, tổng vệ sinh căn hộ, vệ sinh máy lạnh, giặt sofa và nấu ăn gia đình tại TP.HCM.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body data-view-mode="user">
 
   <!-- FRAMED-SHEET APP SHELL (taste-skill seed 1808940372 + page-is-the-object seed 1120219307) -->
   <div class="framed-shell" id="appRoot">
 
-    <!-- TOP BAR: Brand + Portal Switcher + Component 2.5 (Provider Online & GPS Toggle) -->
+    <!-- TOP BAR: Brand + Navigation (User Mode Nav OR Dev 4-Portal Switcher) + Mode Toggle -->
     <header class="shell-topbar" role="banner">
       <div class="brand-cluster">
-        <a href="#1.1" class="brand-mark" onclick="GDXApp.go('1.1'); return false;" aria-label="Về trang chủ Gia Đình Xanh">G</a>
+        <a href="#1.1" class="brand-mark" onclick="GDXApp.goHomeByRole(); return false;" aria-label="Về trang chủ Gia Đình Xanh">G</a>
         <div>
           <div class="brand-title">Gia Đình Xanh</div>
-          <div class="brand-sub" id="activeRoleCaption">Phân hệ 1 · Khách hàng</div>
+          <div class="brand-sub" id="activeRoleCaption">Chăm sóc tổ ấm tại gia</div>
         </div>
       </div>
 
-      <!-- 4-Portal Switcher -->
-      <nav class="portal-switcher" data-ui="true" aria-label="Chuyển đổi 4 phân hệ">
+      <!-- REAL USER NAVIGATION (Shown in 'user' mode) -->
+      <nav class="portal-switcher user-main-nav" id="userMainNav" data-ui="true" aria-label="Điều hướng khách hàng">
+        <!-- Populated dynamically by app.js based on logged-in user role -->
+      </nav>
+
+      <!-- DEV 4-PORTAL SWITCHER (Shown only in 'dev' mode) -->
+      <nav class="portal-switcher dev-only-el" id="devPortalSwitcher" data-ui="true" aria-label="Chuyển đổi 4 phân hệ">
         <button type="button" class="portal-tab" data-portal="0" aria-selected="false" onclick="GDXApp.switchPortal(0)">
           Phân hệ 0 · Xác thực (5)
         </button>
@@ -41,26 +46,51 @@
         </button>
       </nav>
 
-      <!-- Topbar Right: Component 2.5 (Thanh trạng thái Nhận việc & GPS) + Quick Modal Launcher -->
+      <!-- Topbar Right: Mode Switcher + User Account / Dev Controls -->
       <div class="topbar-right">
-        <div class="provider-header-widget" id="providerHeaderWidget" title="Giao diện 2.5: Thanh trạng thái Nhận việc & GPS (provider_profiles.is_available_online, lattitude, longtitude)">
+        <!-- Component 2.5: Thanh trạng thái Nhận việc & Tọa độ (khi là Thợ) -->
+        <div class="provider-header-widget" id="providerHeaderWidget" style="display:none;" title="Trạng thái nhận việc & tọa độ">
           <button type="button" class="online-switch-btn" id="toggleOnlineBtn" onclick="GDXApp.toggleProviderOnline()">
             <span class="status-dot is-online" id="providerOnlineDot"></span>
             <span id="providerOnlineLabel">Đang nhận việc</span>
           </button>
-          <button type="button" class="gps-coord-btn" id="updateGpsBtn" onclick="GDXApp.refreshProviderGPS()" title="Cập nhật tọa độ lattitude / longtitude">
+          <button type="button" class="gps-coord-btn" id="updateGpsBtn" onclick="GDXApp.refreshProviderGPS()" title="Cập nhật tọa độ vị trí">
             <span id="providerGpsText">10.7312, 106.7159</span>
           </button>
         </div>
 
-        <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.openScreenCatalogModal()">
+        <!-- Real User Account Pill (Shown in 'user' mode) -->
+        <div class="user-only-el user-account-bar" id="userAccountBar">
+          <button type="button" class="btn btn-secondary btn-sm" id="userAccountBtn" onclick="GDXApp.handleUserAccountClick()">
+            <span class="status-dot is-online"></span>
+            <span id="userAccountLabel">Nguyễn Minh Thảo</span>
+          </button>
+        </div>
+
+        <!-- Dev Controls (Shown only in 'dev' mode) -->
+        <button type="button" class="btn btn-secondary btn-sm dev-only-el" id="supabaseStatusBtn" onclick="GDXApp.openSupabaseStatusModal()" title="Kiểm tra kết nối Backend API & cấu hình .env.local">
+          <span class="status-dot is-online" id="backendConnDot"></span>
+          <span id="backendConnLabel">API · .env.local</span>
+        </button>
+
+        <button type="button" class="btn btn-secondary btn-sm dev-only-el" onclick="GDXApp.openScreenCatalogModal()">
           Danh mục 34 UI
         </button>
+
+        <!-- MODE SWITCHER: Luồng Người dùng vs Chế độ Dev -->
+        <div class="mode-switch-pill" role="group" aria-label="Chuyển chế độ hiển thị">
+          <button type="button" class="mode-switch-btn" id="modeBtnUser" aria-pressed="true" onclick="GDXApp.setViewMode('user')">
+            Luồng Người dùng
+          </button>
+          <button type="button" class="mode-switch-btn" id="modeBtnDev" aria-pressed="false" onclick="GDXApp.setViewMode('dev')">
+            Chế độ Dev (34 UI)
+          </button>
+        </div>
       </div>
     </header>
 
-    <!-- LEFT SIDEBAR: Contextual Navigation for the Active Portal + Modals Drawer Triggers -->
-    <aside class="shell-sidebar" aria-label="Điều hướng màn hình trong phân hệ">
+    <!-- LEFT SIDEBAR: Dev Contextual Navigation (Shown only in 'dev' mode) -->
+    <aside class="shell-sidebar dev-only-el" id="devSidebar" aria-label="Điều hướng màn hình trong phân hệ">
       <div>
         <div class="sidebar-section-title" id="sidebarPagesHeading">Màn hình chính (Pages)</div>
         <div class="sidebar-nav-list" id="sidebarPageList"></div>
@@ -84,19 +114,17 @@
 
   </div>
 
-  <!-- MODAL / DRAWER HOST (For Screens 1.7–1.11, 2.6–2.9, 3.5–3.9 & 34-UI Index) -->
-  <div class="modal-backdrop" id="modalBackdrop" hidden onclick="if(event.target === this) GDXApp.closeModal()">
-    <div class="modal-dialog" id="modalDialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-      <div class="modal-header">
-        <div>
-          <h2 class="modal-title" id="modalTitle">Tiêu đề hộp thoại</h2>
-          <p class="field-hint" id="modalSub" style="margin-top:2px;"></p>
-        </div>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()" aria-label="Đóng hộp thoại">Đóng</button>
+  <!-- NATIVE DIALOG MODAL / DRAWER HOST -->
+  <dialog class="modal-dialog" id="modalDialog" closedby="any" aria-labelledby="modalTitle">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="modalTitle">Tiêu đề hộp thoại</h2>
+        <p class="field-hint" id="modalSub" style="margin-top:2px;"></p>
       </div>
-      <div id="modalBody"></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()" aria-label="Đóng hộp thoại">Đóng</button>
     </div>
-  </div>
+    <div id="modalBody"></div>
+  </dialog>
 
   <!-- TOAST FEEDBACK -->
   <div class="toast-banner" id="toastBanner" role="status" aria-live="polite" hidden></div>
