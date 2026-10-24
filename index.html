@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Gia Đình Xanh · Hệ Thống Đặt Lịch Dịch Vụ Gia Đình (34 Giao Diện Chuẩn Supabase SQL)</title>
+  <meta name="description" content="Hệ thống đặt lịch dịch vụ chăm sóc gia đình tại nhà — 34 màn hình và hộp thoại ánh xạ 1-1 với 16 bảng PostgreSQL và cơ chế phân quyền RLS.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- FRAMED-SHEET APP SHELL (taste-skill seed 1808940372 + page-is-the-object seed 1120219307) -->
+  <div class="framed-shell" id="appRoot">
+
+    <!-- TOP BAR: Brand + Portal Switcher + Component 2.5 (Provider Online & GPS Toggle) -->
+    <header class="shell-topbar" role="banner">
+      <div class="brand-cluster">
+        <a href="#1.1" class="brand-mark" onclick="GDXApp.go('1.1'); return false;" aria-label="Về trang chủ Gia Đình Xanh">G</a>
+        <div>
+          <div class="brand-title">Gia Đình Xanh</div>
+          <div class="brand-sub" id="activeRoleCaption">Phân hệ 1 · Khách hàng</div>
+        </div>
+      </div>
+
+      <!-- 4-Portal Switcher -->
+      <nav class="portal-switcher" data-ui="true" aria-label="Chuyển đổi 4 phân hệ">
+        <button type="button" class="portal-tab" data-portal="0" aria-selected="false" onclick="GDXApp.switchPortal(0)">
+          Phân hệ 0 · Xác thực (5)
+        </button>
+        <button type="button" class="portal-tab" data-portal="1" aria-selected="true" onclick="GDXApp.switchPortal(1)">
+          Phân hệ 1 · Khách hàng (11)
+        </button>
+        <button type="button" class="portal-tab" data-portal="2" aria-selected="false" onclick="GDXApp.switchPortal(2)">
+          Phân hệ 2 · Đối tác Thợ (9)
+        </button>
+        <button type="button" class="portal-tab" data-portal="3" aria-selected="false" onclick="GDXApp.switchPortal(3)">
+          Phân hệ 3 · Quản trị Admin (9)
+        </button>
+      </nav>
+
+      <!-- Topbar Right: Component 2.5 (Thanh trạng thái Nhận việc & GPS) + Quick Modal Launcher -->
+      <div class="topbar-right">
+        <div class="provider-header-widget" id="providerHeaderWidget" title="Giao diện 2.5: Thanh trạng thái Nhận việc & GPS (provider_profiles.is_available_online, lattitude, longtitude)">
+          <button type="button" class="online-switch-btn" id="toggleOnlineBtn" onclick="GDXApp.toggleProviderOnline()">
+            <span class="status-dot is-online" id="providerOnlineDot"></span>
+            <span id="providerOnlineLabel">Đang nhận việc</span>
+          </button>
+          <button type="button" class="gps-coord-btn" id="updateGpsBtn" onclick="GDXApp.refreshProviderGPS()" title="Cập nhật tọa độ lattitude / longtitude">
+            <span id="providerGpsText">10.7312, 106.7159</span>
+          </button>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.openScreenCatalogModal()">
+          Danh mục 34 UI
+        </button>
+      </div>
+    </header>
+
+    <!-- LEFT SIDEBAR: Contextual Navigation for the Active Portal + Modals Drawer Triggers -->
+    <aside class="shell-sidebar" aria-label="Điều hướng màn hình trong phân hệ">
+      <div>
+        <div class="sidebar-section-title" id="sidebarPagesHeading">Màn hình chính (Pages)</div>
+        <div class="sidebar-nav-list" id="sidebarPageList"></div>
+      </div>
+
+      <div id="sidebarModalsSection">
+        <div class="sidebar-section-title">Hộp thoại &amp; Ngăn kéo (Modals)</div>
+        <div class="sidebar-nav-list" id="sidebarModalList"></div>
+      </div>
+
+      <div class="sidebar-footer-box" id="sidebarSchemaSummary">
+        <div><strong>PostgreSQL RLS Active</strong></div>
+        <div style="margin-top:4px;" id="sidebarCurrentIdentity">auth.uid(): Nguyễn Minh Thảo (customer_id #101)</div>
+      </div>
+    </aside>
+
+    <!-- INSET WHITE WORK SHEET -->
+    <main class="shell-sheet" id="mainViewport" role="main" tabindex="-1">
+      <!-- Dynamic Screen Content Rendered by app.js -->
+    </main>
+
+  </div>
+
+  <!-- MODAL / DRAWER HOST (For Screens 1.7–1.11, 2.6–2.9, 3.5–3.9 & 34-UI Index) -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden onclick="if(event.target === this) GDXApp.closeModal()">
+    <div class="modal-dialog" id="modalDialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modalTitle">Tiêu đề hộp thoại</h2>
+          <p class="field-hint" id="modalSub" style="margin-top:2px;"></p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()" aria-label="Đóng hộp thoại">Đóng</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- TOAST FEEDBACK -->
+  <div class="toast-banner" id="toastBanner" role="status" aria-live="polite" hidden></div>
+
+  <!-- SCRIPTS -->
+  <script src="assets/charts.js"></script>
+  <script src="db-mock.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

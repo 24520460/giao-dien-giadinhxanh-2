@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Tài Liệu Đặc Tả Giao Diện Hệ Thống · Gia Đình Xanh</title>
+  <style>
+    body { font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.5; color: #111; max-width: 850px; margin: 40px auto; padding: 20px; }
+    h1 { font-size: 22pt; text-align: center; text-transform: uppercase; margin-bottom: 6px; color: #0f7d45; }
+    h2 { font-size: 16pt; text-transform: uppercase; border-bottom: 2px solid #0f7d45; padding-bottom: 4px; margin-top: 36px; color: #1b4332; }
+    h3 { font-size: 14pt; margin-top: 24px; color: #2b2622; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; }
+    th, td { border: 1px solid #999; padding: 8px 10px; font-size: 11pt; text-align: left; vertical-align: top; }
+    th { background-color: #f2f4f2; font-weight: bold; }
+    code { font-family: 'Courier New', Courier, monospace; background-color: #f0f0f0; padding: 1px 4px; font-size: 10.5pt; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10pt; font-weight: bold; background: #e0f2fe; color: #0369a1; }
+    .note { background-color: #fcf9ee; border-left: 4px solid #d97706; padding: 10px 14px; margin: 16px 0; font-size: 11.5pt; }
+  </style>
+</head>
+<body>
+
+  <h1>TÀI LIỆU ĐẶC TẢ GIAO DIỆN HỆ THỐNG (PRODUCTION UI SPECIFICATION)</h1>
+  <div style="text-align: center; font-style: italic; margin-bottom: 24px;">
+    Dự án: Đặt lịch Dịch vụ Gia đình (Gia Đình Xanh) · Ánh xạ 1-1 với 16 bảng PostgreSQL &amp; Supabase RLS
+  </div>
+
+  <div class="note">
+    <strong>Hướng dẫn đưa lên Google Drive:</strong> Bạn chỉ cần mở file HTML này bằng trình duyệt, nhấn <strong>Ctrl + A</strong> &rarr; <strong>Ctrl + C</strong>, rồi dán (<strong>Ctrl + V</strong>) vào một file Google Docs mới tại <a href="https://docs.new" target="_blank">docs.new</a>. Toàn bộ định dạng bảng, tiêu đề và ghi chú sẽ được giữ nguyên 100%.
+  </div>
+
+  <h2>1. BẢNG TỔNG QUAN QUY MÔ HỆ THỐNG (34 GIAO DIỆN)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 10%;">STT</th>
+        <th style="width: 30%;">Tên giao diện / Màn hình</th>
+        <th style="width: 15%;">Loại UI</th>
+        <th style="width: 25%;">Bảng dữ liệu liên quan</th>
+        <th style="width: 20%;">Phân hệ</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>0.1</td><td>Đăng nhập / Đăng ký / Khôi phục mật khẩu</td><td>Page</td><td>auth.users, users</td><td>Phân hệ 0: Xác thực</td></tr>
+      <tr><td>0.2</td><td>Thiết lập hồ sơ Khách hàng (Customer Onboarding)</td><td>Page (Step Form)</td><td>users, customer_profiles, ward</td><td>Phân hệ 0: Xác thực</td></tr>
+      <tr><td>0.3</td><td>Đăng ký hành nghề Thợ (Provider Onboarding)</td><td>Page (Step Form)</td><td>provider_profiles, provider_services, provider_areas</td><td>Phân hệ 0: Xác thực</td></tr>
+      <tr><td>0.4</td><td>Trạng thái Hồ sơ Thợ (Chờ duyệt / Bị từ chối)</td><td>Page (Status)</td><td>provider_profiles (verification_status)</td><td>Phân hệ 0: Xác thực</td></tr>
+      <tr><td>0.5</td><td>Thông báo Tài khoản bị khóa (Account Suspended)</td><td>Page (Error)</td><td>users (is_active = FALSE)</td><td>Phân hệ 0: Xác thực</td></tr>
+
+      <tr><td>1.1</td><td>Trang chủ &amp; Khám phá dịch vụ</td><td>Page</td><td>service_categories, services, favorites</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.2</td><td>Cấu hình dịch vụ trước khi đặt (Booking Wizard)</td><td>Page (Wizard)</td><td>services, provider_public_profiles, bookings</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.3</td><td>Theo dõi đơn hàng trực tiếp (Live Tracking)</td><td>Page</td><td>bookings, booking_status_history, provider_public_profiles</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.4</td><td>Quản lý lịch hẹn dịch vụ</td><td>Page</td><td>bookings, services, reviews</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.5</td><td>Hồ sơ cá nhân &amp; Sổ địa chỉ</td><td>Page</td><td>users, customer_profiles, province, ward</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.6</td><td>Danh sách Dịch vụ yêu thích</td><td>Page</td><td>favorites, services</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.7</td><td>Hồ sơ công khai của Thợ</td><td>Modal</td><td>provider_public_profiles, reviews, provider_services</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.8</td><td>Cổng Thanh toán hóa đơn (Checkout)</td><td>Modal</td><td>bookings (total_amount, payment_status)</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.9</td><td>Đánh giá &amp; Chấm điểm Thợ</td><td>Modal</td><td>reviews, bookings</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.10</td><td>Xác nhận Hủy lịch hẹn</td><td>Modal</td><td>bookings, booking_status_history</td><td>Phân hệ 1: Khách hàng</td></tr>
+      <tr><td>1.11</td><td>Trung tâm Hỗ trợ &amp; Gửi khiếu nại</td><td>Drawer</td><td>support_tickets, bookings</td><td>Phân hệ 1: Khách hàng</td></tr>
+
+      <tr><td>2.1</td><td>Sàn nhận việc làm (Job Board)</td><td>Page</td><td>bookings (pending), services, ward</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.2</td><td>Ca làm việc hiện tại (Live Timer)</td><td>Page</td><td>bookings, services, booking_status_history</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.3</td><td>Ví Thu Nhập &amp; Lịch Ca</td><td>Page</td><td>bookings, availability_schedules, reviews</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.4</td><td>Cấu hình Năng lực &amp; Khu vực hoạt động</td><td>Page</td><td>provider_profiles, provider_services, provider_areas</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.5</td><td>Thanh trạng thái Nhận việc &amp; GPS</td><td>Header Component</td><td>provider_profiles (is_available_online, GPS)</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.6</td><td>Thiết lập Lịch cố định &amp; Xin nghỉ phép</td><td>Modal</td><td>availability_schedules, availability_exceptions</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.7</td><td>Kê khai Chi phí phát sinh (Incidental Cost)</td><td>Modal</td><td>bookings (total_incidental, notes)</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.8</td><td>Từ chối đơn / Hủy ca làm việc</td><td>Modal</td><td>bookings, booking_status_history</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+      <tr><td>2.9</td><td>Báo cáo Sự cố / Hỗ trợ Đối tác</td><td>Drawer</td><td>support_tickets, bookings</td><td>Phân hệ 2: Đối tác Thợ</td></tr>
+
+      <tr><td>3.1</td><td>Dashboard Tổng quan &amp; Điều phối</td><td>Page</td><td>bookings, provider_profiles, users, support_tickets</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.2</td><td>Quản lý Danh mục &amp; Cấu hình Biểu giá</td><td>Page</td><td>service_categories, services</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.3</td><td>Xét duyệt Hồ sơ Đối tác (KYC)</td><td>Page</td><td>provider_profiles, users, provider_services</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.4</td><td>Quản lý Người dùng &amp; Giải quyết Khiếu nại</td><td>Page (Split Tabs)</td><td>users, customer_profiles, support_tickets, reviews</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.5</td><td>Tra cứu Chi tiết Đơn &amp; Lịch sử Kiểm toán</td><td>Drawer</td><td>bookings, booking_status_history, users</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.6</td><td>Xử lý Hoàn tiền &amp; Điều chỉnh Thanh toán</td><td>Modal</td><td>bookings, booking_status_history</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.7</td><td>Xử lý &amp; Cập nhật Phiếu hỗ trợ</td><td>Drawer</td><td>support_tickets, users, bookings</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.8</td><td>Thêm / Chỉnh sửa Danh mục &amp; Dịch vụ</td><td>Modal</td><td>service_categories, services</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+      <tr><td>3.9</td><td>Quản lý Địa giới hành chính (Tỉnh/Phường)</td><td>Modal</td><td>province, ward</td><td>Phân hệ 3: Quản trị Admin</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. CHI TIẾT CÁC HÀM SUPABASE RPC (TRANSACTION CONTROL)</h2>
+  <p>File nguồn: <code>supabase_rpc_functions.sql</code> đã được tạo trong thư mục dự án.</p>
+  <ul>
+    <li><strong>rpc_transition_booking_status:</strong> Chuyển trạng thái đơn hàng an toàn theo ma trận phân quyền (Customer chỉ được hủy khi pending/confirmed; Provider nhận pending&rarr;confirmed, bắt đầu confirmed&rarr;in_progress, hoàn thành in_progress&rarr;completed, từ chối pending&rarr;rejected bắt buộc lý do). Tự động INSERT bản ghi vào <code>booking_status_history</code>.</li>
+    <li><strong>rpc_update_incidental_cost:</strong> Cho phép Thợ đang làm ca kê khai chi phí vật tư phát sinh (<code>total_incidental</code>), tự động cập nhật lại <code>total_amount</code> và ghi vết kiểm toán.</li>
+    <li><strong>rpc_confirm_booking_payment:</strong> Xác nhận thanh toán hóa đơn (<code>payment_status = 'paid'</code>) và ghi nhận phương thức thanh toán QR SePay.</li>
+    <li><strong>rpc_admin_adjust_payment_and_refund:</strong> Cho phép Admin hoàn tiền (<code>refunded</code>), điều chỉnh chi phí phát sinh hoặc đổi thợ điều phối và bắt buộc ghi lý do kiểm toán.</li>
+  </ul>
+
+</body>
+</html>

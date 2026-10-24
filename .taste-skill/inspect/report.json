@@ -1,0 +1,1635 @@
+{
+ "url": "index.html",
+ "at": "2026-10-23T14:46:30.409Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.93,
+    0.83,
+    0.83
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 2064,
+     "screens": 2.3,
+     "words": 633,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 0,
+     "sections": 1,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 1,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "chars": 37,
+     "lines": 2,
+     "size": 29,
+     "vw": 2,
+     "font": "STIX Two Text",
+     "weight": 400,
+     "tracking": -0.03,
+     "leading": 1.05,
+     "top": 210,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "lines": 2,
+     "size": 28.6,
+     "font": "STIX Two Text"
+    },
+    "headings": [
+     {
+      "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+      "words": 8,
+      "chars": 37,
+      "lines": 2,
+      "size": 28.6,
+      "vw": 2,
+      "font": "STIX Two Text",
+      "weight": 400,
+      "tracking": -0.026,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.18,
+      "top": 210,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "Biểu phí & Dịch vụ tiêu chuẩn",
+      "words": 7,
+      "chars": 29,
+      "lines": 1,
+      "size": 28,
+      "vw": 1.9,
+      "font": "STIX Two Text",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.31,
+      "top": 658,
+      "tag": "h2",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 2,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": 7,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 0.8,
+       "mono": false
+      },
+      {
+       "family": "STIX Two Text",
+       "share": 0.19,
+       "mono": false
+      },
+      {
+       "family": "IBM Plex Mono",
+       "share": 0.01,
+       "mono": true
+      }
+     ],
+     "familyCount": 3,
+     "sizes": [
+      11,
+      13,
+      14,
+      15,
+      16,
+      18,
+      19,
+      20,
+      24,
+      26,
+      28,
+      29
+     ],
+     "sizeCount": 12,
+     "notLoaded": [],
+     "body": {
+      "font": "IBM Plex Sans",
+      "size": 15,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 7.5
+     },
+     "measureChars": 57,
+     "max": {
+      "size": 28.6,
+      "vw": 2,
+      "font": "STIX Two Text",
+      "text": "Thảnh thơi việc nhà, an lòng chăm sóc"
+     },
+     "monoShare": 0.01,
+     "monoProseShare": 0.01,
+     "monoFamilies": [
+      "IBM Plex Mono"
+     ],
+     "monoSamples": [
+      "1.1",
+      "1.2",
+      "1.3",
+      "1.4",
+      "1.5",
+      "1.6"
+     ],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.04,
+     "centerShare": 0.14,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f2f4f2",
+     "bodyBgHsl": {
+      "h": 120,
+      "s": 0.08,
+      "l": 0.95
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#f2f4f2",
+       "top": 0,
+       "hsl": {
+        "h": 120,
+        "s": 0.08,
+        "l": 0.95
+       }
+      },
+      {
+       "color": "#ebe5e3",
+       "top": 52,
+       "hsl": {
+        "h": 15,
+        "s": 0.17,
+        "l": 0.91
+       }
+      },
+      {
+       "color": "#ffffff",
+       "top": 85,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      },
+      {
+       "color": "#f4f6f4",
+       "top": 618,
+       "hsl": {
+        "h": 120,
+        "s": 0.1,
+        "l": 0.96
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#5c534f",
+       "share": 0.39
+      },
+      {
+       "color": "#525854",
+       "share": 0.26
+      },
+      {
+       "color": "#2b2622",
+       "share": 0.19
+      },
+      {
+       "color": "#131614",
+       "share": 0.06
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.04
+      }
+     ],
+     "button": {
+      "bg": "#0f7d45",
+      "hsl": {
+       "h": 149,
+       "s": 0.79,
+       "l": 0.27
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 10,
+     "inHero": 5,
+     "radius": 6,
+     "height": 30,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Phân hệ 1 · Khách hàng (11)",
+      "Danh mục 34 UI",
+      "Trang chủ & Khám phá dịch vụ 1.1",
+      "Đặt lịch →",
+      "Đã lưu (3)"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 6,
+     "hairlineSamples": [
+      "div 884px",
+      "div 378px",
+      "div 378px",
+      "div 378px",
+      "div 378px"
+     ],
+     "outlinedBoxes": 1,
+     "dashed": 5,
+     "blurred": 0,
+     "roundedBoxes": 2,
+     "boxRadius": 8,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 3,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 1219
+      }
+     ]
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 1,
+     "fixed": false,
+     "height": 52,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex mono",
+     "ibm plex sans",
+     "stix two text"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 2064,
+    "margins": {
+     "left": 16,
+     "right": 160
+    },
+    "sections": [
+     {
+      "sel": "article.charter-sheet",
+      "tag": "article",
+      "top": 85,
+      "height": 485,
+      "words": 78,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+       "size": 29,
+       "tag": "h1"
+      },
+      "left": 400,
+      "right": 164,
+      "textLeft": 400,
+      "textRight": 164,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.menu-catalog-section",
+      "tag": "section",
+      "top": 618,
+      "height": 1325,
+      "words": 315,
+      "media": 0,
+      "middle": 42,
+      "heading": {
+       "text": "Biểu phí & Dịch vụ tiêu chuẩn",
+       "size": 28,
+       "tag": "h2"
+      },
+      "left": 396,
+      "right": 160,
+      "textLeft": 396,
+      "textRight": 171,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+      "size": 29,
+      "top": 210,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 396,
+      "n": 6
+     },
+     {
+      "x": 416,
+      "n": 3
+     },
+     {
+      "x": 882,
+      "n": 2
+     }
+    ],
+    "leftBlocks": 11,
+    "bodySize": 15,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0.11,
+    "voidBox": {
+     "x": 240,
+     "y": 540,
+     "w": 1200,
+     "h": 120
+    }
+   },
+   "app": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "dark": false,
+    "ground": "#f2f4f2",
+    "sidebar": {
+     "w": 244,
+     "tag": "aside",
+     "links": 11,
+     "share": 0.17
+    },
+    "topbar": {
+     "h": 52
+    },
+    "canvas": {
+     "left": 152,
+     "right": 35
+    },
+    "hero": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "chars": 37,
+     "lines": 2,
+     "size": 29,
+     "vw": 2,
+     "font": "STIX Two Text",
+     "weight": 400,
+     "tracking": -0.03,
+     "leading": 1.05,
+     "top": 210,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 2,
+     "firstScreen": 2,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 10,
+     "radii": [
+      [
+       0,
+       8
+      ],
+      [
+       8,
+       1
+      ],
+      [
+       16,
+       1
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 0,
+     "softShadows": 0,
+     "shadowSamples": [],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 6,
+     "tabularShare": 1,
+     "kpiMax": 13
+    },
+    "rows": null,
+    "chartHues": 0,
+    "placeholders": [],
+    "type": {
+     "under13": 0.01,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      11,
+      13,
+      14,
+      15,
+      18,
+      19,
+      20,
+      24,
+      26,
+      28,
+      29
+     ]
+    },
+    "title": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "size": 29,
+     "top": 210
+    },
+    "colourShare": 0.003
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 3,
+   "filled": [
+    0.95,
+    1,
+    1
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 2404,
+     "screens": 2.3,
+     "words": 633,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 0,
+     "sections": 1,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 1,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 1,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "chars": 37,
+     "lines": 2,
+     "size": 25,
+     "vw": 3.2,
+     "font": "STIX Two Text",
+     "weight": 400,
+     "tracking": -0.03,
+     "leading": 1.05,
+     "top": 370,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "lines": 2,
+     "size": 24.6,
+     "font": "STIX Two Text"
+    },
+    "headings": [
+     {
+      "text": "Chăm sóc Y tế & Người thân",
+      "words": 7,
+      "chars": 26,
+      "lines": 1,
+      "size": 26,
+      "vw": 3.4,
+      "font": "STIX Two Text",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.5,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 931,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "Chăm sóc Tổ ấm & Nội trợ",
+      "words": 7,
+      "chars": 24,
+      "lines": 1,
+      "size": 26,
+      "vw": 3.4,
+      "font": "STIX Two Text",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.5,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 1488,
+      "tag": "h3",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 2,
+     "maxLines": 1,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": 7,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 0.8,
+       "mono": false
+      },
+      {
+       "family": "STIX Two Text",
+       "share": 0.19,
+       "mono": false
+      },
+      {
+       "family": "IBM Plex Mono",
+       "share": 0.01,
+       "mono": true
+      }
+     ],
+     "familyCount": 3,
+     "sizes": [
+      11,
+      13,
+      14,
+      15,
+      16,
+      18,
+      19,
+      20,
+      22,
+      24,
+      25,
+      26
+     ],
+     "sizeCount": 12,
+     "notLoaded": [],
+     "body": {
+      "font": "IBM Plex Sans",
+      "size": 15,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 7.5
+     },
+     "measureChars": 57,
+     "max": {
+      "size": 26,
+      "vw": 3.4,
+      "font": "STIX Two Text",
+      "text": "Chăm sóc Y tế & Người thân"
+     },
+     "monoShare": 0.01,
+     "monoProseShare": 0.01,
+     "monoFamilies": [
+      "IBM Plex Mono"
+     ],
+     "monoSamples": [
+      "1.1",
+      "1.2",
+      "1.3",
+      "1.4",
+      "1.5",
+      "1.6"
+     ],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.04,
+     "centerShare": 0.14,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f2f4f2",
+     "bodyBgHsl": {
+      "h": 120,
+      "s": 0.08,
+      "l": 0.95
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#f2f4f2",
+       "top": 0,
+       "hsl": {
+        "h": 120,
+        "s": 0.08,
+        "l": 0.95
+       }
+      },
+      {
+       "color": "#ebe5e3",
+       "top": 199,
+       "hsl": {
+        "h": 15,
+        "s": 0.17,
+        "l": 0.91
+       }
+      },
+      {
+       "color": "#ffffff",
+       "top": 224,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      },
+      {
+       "color": "#f4f6f4",
+       "top": 804,
+       "hsl": {
+        "h": 120,
+        "s": 0.1,
+        "l": 0.96
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#5c534f",
+       "share": 0.39
+      },
+      {
+       "color": "#525854",
+       "share": 0.26
+      },
+      {
+       "color": "#2b2622",
+       "share": 0.19
+      },
+      {
+       "color": "#131614",
+       "share": 0.06
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.04
+      }
+     ],
+     "button": {
+      "bg": "#0f7d45",
+      "hsl": {
+       "h": 149,
+       "s": 0.79,
+       "l": 0.27
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 10,
+     "inHero": 5,
+     "radius": 6,
+     "height": 30,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Phân hệ 1 · Khách hàng (11)",
+      "Danh mục 34 UI",
+      "Trang chủ & Khám phá dịch vụ 1.1",
+      "Đặt lịch →",
+      "Đã lưu (3)"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 6,
+     "hairlineSamples": [
+      "div 686px",
+      "div 646px",
+      "div 646px",
+      "div 646px",
+      "div 646px"
+     ],
+     "outlinedBoxes": 1,
+     "dashed": 5,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 3,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 1545
+      }
+     ]
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 1,
+     "fixed": false,
+     "height": 116,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex mono",
+     "ibm plex sans",
+     "stix two text"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 2404,
+    "margins": {
+     "left": 26,
+     "right": 41
+    },
+    "sections": [
+     {
+      "sel": "article.charter-sheet",
+      "tag": "article",
+      "top": 224,
+      "height": 548,
+      "words": 78,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+       "size": 25,
+       "tag": "h1"
+      },
+      "left": 41,
+      "right": 41,
+      "textLeft": 41,
+      "textRight": 102,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "section.menu-catalog-section",
+      "tag": "section",
+      "top": 804,
+      "height": 1520,
+      "words": 315,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Chăm sóc Y tế & Người thân",
+       "size": 26,
+       "tag": "h3"
+      },
+      "left": 41,
+      "right": 41,
+      "textLeft": 41,
+      "textRight": 52,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+      "size": 25,
+      "top": 370,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 41,
+      "n": 6
+     },
+     {
+      "x": 61,
+      "n": 5
+     }
+    ],
+    "leftBlocks": 11,
+    "bodySize": 15,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "dark": false,
+    "ground": "#f2f4f2",
+    "sidebar": null,
+    "topbar": null,
+    "canvas": {
+     "left": 26,
+     "right": -2111
+    },
+    "hero": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "chars": 37,
+     "lines": 2,
+     "size": 25,
+     "vw": 3.2,
+     "font": "STIX Two Text",
+     "weight": 400,
+     "tracking": -0.03,
+     "leading": 1.05,
+     "top": 370,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 2,
+     "firstScreen": 2,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 8,
+     "radii": [
+      [
+       0,
+       8
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 0,
+     "softShadows": 0,
+     "shadowSamples": [],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 6,
+     "tabularShare": 1,
+     "kpiMax": 13
+    },
+    "rows": null,
+    "chartHues": 0,
+    "placeholders": [],
+    "type": {
+     "under13": 0.01,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      11,
+      13,
+      14,
+      15,
+      18,
+      19,
+      20,
+      22,
+      24,
+      25,
+      26
+     ]
+    },
+    "title": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "size": 25,
+     "top": 370
+    },
+    "colourShare": 0.019
+   },
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 4,
+   "filled": [
+    0.9,
+    1,
+    1,
+    1
+   ],
+   "motion": {
+    "elements": 0,
+    "css": 0,
+    "transitions": 0,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 3295,
+     "screens": 3.9,
+     "words": 633,
+     "img": 0,
+     "video": 0,
+     "canvas": 0,
+     "svg": 0,
+     "sections": 1,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 1,
+     "uiAbuse": false,
+     "realPictures": 0,
+     "videoCount": 0,
+     "uiPictures": 0,
+     "pictureSamples": [],
+     "blendText": 0,
+     "sideScrollers": 1,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "chars": 37,
+     "lines": 2,
+     "size": 24,
+     "vw": 6.2,
+     "font": "STIX Two Text",
+     "weight": 400,
+     "tracking": -0.03,
+     "leading": 1.05,
+     "top": 413,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "h1": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "lines": 2,
+     "size": 24,
+     "font": "STIX Two Text"
+    },
+    "headings": [
+     {
+      "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+      "words": 8,
+      "chars": 37,
+      "lines": 2,
+      "size": 24,
+      "vw": 6.2,
+      "font": "STIX Two Text",
+      "weight": 400,
+      "tracking": -0.026,
+      "leading": 1.05,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.55,
+      "top": 413,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "Chăm sóc Y tế & Người thân",
+      "words": 7,
+      "chars": 26,
+      "lines": 2,
+      "size": 26,
+      "vw": 6.7,
+      "font": "STIX Two Text",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.5,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.83,
+      "top": 1179,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "Chăm sóc Tổ ấm & Nội trợ",
+      "words": 7,
+      "chars": 24,
+      "lines": 1,
+      "size": 26,
+      "vw": 6.7,
+      "font": "STIX Two Text",
+      "weight": 600,
+      "tracking": 0,
+      "leading": 1.5,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.83,
+      "top": 2026,
+      "tag": "h3",
+      "kind": "heading"
+     }
+    ],
+    "headingSummary": {
+     "count": 3,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 0,
+     "centered": 0,
+     "medianWords": 7,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "IBM Plex Sans",
+       "share": 0.8,
+       "mono": false
+      },
+      {
+       "family": "STIX Two Text",
+       "share": 0.19,
+       "mono": false
+      },
+      {
+       "family": "IBM Plex Mono",
+       "share": 0.01,
+       "mono": true
+      }
+     ],
+     "familyCount": 3,
+     "sizes": [
+      11,
+      13,
+      14,
+      15,
+      16,
+      18,
+      19,
+      20,
+      21,
+      24,
+      26
+     ],
+     "sizeCount": 11,
+     "notLoaded": [],
+     "body": {
+      "font": "IBM Plex Sans",
+      "size": 15,
+      "leading": 1.5,
+      "weight": 400,
+      "tracking": 0,
+      "contrast": 7.5
+     },
+     "measureChars": 32,
+     "max": {
+      "size": 26,
+      "vw": 6.7,
+      "font": "STIX Two Text",
+      "text": "Chăm sóc Y tế & Người thân"
+     },
+     "monoShare": 0.01,
+     "monoProseShare": 0.01,
+     "monoFamilies": [
+      "IBM Plex Mono"
+     ],
+     "monoSamples": [
+      "1.1",
+      "1.2",
+      "1.3",
+      "1.4",
+      "1.5",
+      "1.6"
+     ],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.04,
+     "centerShare": 0.14,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f2f4f2",
+     "bodyBgHsl": {
+      "h": 120,
+      "s": 0.08,
+      "l": 0.95
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#f2f4f2",
+       "top": 0,
+       "hsl": {
+        "h": 120,
+        "s": 0.08,
+        "l": 0.95
+       }
+      },
+      {
+       "color": "#ebe5e3",
+       "top": 237,
+       "hsl": {
+        "h": 15,
+        "s": 0.17,
+        "l": 0.91
+       }
+      },
+      {
+       "color": "#ffffff",
+       "top": 254,
+       "hsl": {
+        "h": 0,
+        "s": 0,
+        "l": 1
+       }
+      },
+      {
+       "color": "#f4f6f4",
+       "top": 1015,
+       "hsl": {
+        "h": 120,
+        "s": 0.1,
+        "l": 0.96
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#5c534f",
+       "share": 0.39
+      },
+      {
+       "color": "#525854",
+       "share": 0.26
+      },
+      {
+       "color": "#2b2622",
+       "share": 0.19
+      },
+      {
+       "color": "#131614",
+       "share": 0.06
+      },
+      {
+       "color": "#ffffff",
+       "share": 0.04
+      }
+     ],
+     "button": {
+      "bg": "#0f7d45",
+      "hsl": {
+       "h": 149,
+       "s": 0.79,
+       "l": 0.27
+      },
+      "fg": "#ffffff"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 10,
+     "inHero": 3,
+     "radius": 6,
+     "height": 30,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "Phân hệ 1 · Khách hàng (11)",
+      "Danh mục 34 UI",
+      "Trang chủ & Khám phá dịch vụ 1.1"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 6,
+     "hairlineSamples": [
+      "div 324px",
+      "div 292px",
+      "div 292px",
+      "div 292px",
+      "div 292px"
+     ],
+     "outlinedBoxes": 1,
+     "dashed": 5,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 0,
+     "mediaRadius": 0,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 3,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 2083
+      }
+     ]
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 1,
+     "fixed": false,
+     "height": 154,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "ibm plex mono",
+     "ibm plex sans",
+     "stix two text"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 3295,
+    "margins": {
+     "left": 16,
+     "right": 13
+    },
+    "sections": [
+     {
+      "sel": "header.shell-topbar",
+      "tag": "header",
+      "top": 0,
+      "height": 154,
+      "words": 44,
+      "media": 0,
+      "middle": 199,
+      "heading": null,
+      "left": 16,
+      "right": 0,
+      "textLeft": 27,
+      "textRight": -378,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     },
+     {
+      "sel": "main#mainViewport.shell-sheet",
+      "tag": "main",
+      "top": 237,
+      "height": 3058,
+      "words": 393,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "Chăm sóc Y tế & Người thân",
+       "size": 26,
+       "tag": "h3"
+      },
+      "left": 33,
+      "right": 33,
+      "textLeft": 33,
+      "textRight": 44,
+      "fullBleed": false,
+      "footer": true,
+      "hero": true,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+      "size": 24,
+      "top": 413,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 33,
+      "n": 6
+     },
+     {
+      "x": 49,
+      "n": 5
+     }
+    ],
+    "leftBlocks": 11,
+    "bodySize": 15,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "dark": false,
+    "ground": "#f2f4f2",
+    "sidebar": null,
+    "topbar": null,
+    "canvas": {
+     "left": 26,
+     "right": -2489
+    },
+    "hero": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "words": 8,
+     "chars": 37,
+     "lines": 2,
+     "size": 24,
+     "vw": 6.2,
+     "font": "STIX Two Text",
+     "weight": 400,
+     "tracking": -0.03,
+     "leading": 1.05,
+     "top": 413,
+     "tag": "h1",
+     "kind": "heading",
+     "align": "left",
+     "position": "left"
+    },
+    "charts": 0,
+    "layout": {
+     "panels": 2,
+     "firstScreen": 1,
+     "ragged": [],
+     "voids": []
+    },
+    "tiles": 0,
+    "panels": {
+     "count": 11,
+     "radii": [
+      [
+       0,
+       11
+      ]
+     ],
+     "heavyBorders": 0,
+     "borderSamples": [],
+     "heavyShadows": 0,
+     "softShadows": 0,
+     "shadowSamples": [],
+     "glass": 0
+    },
+    "chips": {
+     "count": 0,
+     "hues": 0,
+     "samples": []
+    },
+    "numbers": {
+     "cells": 0,
+     "leftAligned": 0,
+     "figures": 6,
+     "tabularShare": 1,
+     "kpiMax": 13
+    },
+    "rows": null,
+    "chartHues": 0,
+    "placeholders": [],
+    "type": {
+     "under13": 0.01,
+     "tiny": 0,
+     "tinySamples": [],
+     "sizes": [
+      11,
+      13,
+      14,
+      15,
+      18,
+      19,
+      20,
+      21,
+      24,
+      26
+     ]
+    },
+    "title": {
+     "text": "Thảnh thơi việc nhà, an lòng chăm sóc",
+     "size": 24,
+     "top": 413
+    },
+    "colourShare": 0.002
+   },
+   "consoleErrors": []
+  }
+ ],
+ "findings": [],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "D:\\hao\\hao\\zzz_CHUA_PHAN_LOAI\\demo giao dien-giadinhxanh 2\\.taste-skill\\inspect\\desktop-fold.jpg",
+   "pages": [
+    "D:\\hao\\hao\\zzz_CHUA_PHAN_LOAI\\demo giao dien-giadinhxanh 2\\.taste-skill\\inspect\\desktop-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "D:\\hao\\hao\\zzz_CHUA_PHAN_LOAI\\demo giao dien-giadinhxanh 2\\.taste-skill\\inspect\\tablet-fold.jpg",
+   "pages": [
+    "D:\\hao\\hao\\zzz_CHUA_PHAN_LOAI\\demo giao dien-giadinhxanh 2\\.taste-skill\\inspect\\tablet-page-01.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "D:\\hao\\hao\\zzz_CHUA_PHAN_LOAI\\demo giao dien-giadinhxanh 2\\.taste-skill\\inspect\\mobile-fold.jpg",
+   "pages": [
+    "D:\\hao\\hao\\zzz_CHUA_PHAN_LOAI\\demo giao dien-giadinhxanh 2\\.taste-skill\\inspect\\mobile-page-01.jpg"
+   ],
+   "film": []
+  }
+ ]
+}
