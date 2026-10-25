@@ -2904,7 +2904,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
 }
 
 // ---------------------------------------------------------------------
-// 5. STATIC FILE SERVER
+// 5. STATIC FILE SERVER & PRE-WARM CACHE (Cho Vercel Serverless)
 // ---------------------------------------------------------------------
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -2918,6 +2918,23 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
+// Đọc trước các file tĩnh cốt lõi vào bộ nhớ để NFT (Node File Trace) đóng gói tự động trên Vercel
+const STATIC_CACHE = {};
+const CORE_FILES = ["index.html", "styles.css", "app.js", "db-mock.js"];
+CORE_FILES.forEach((f) => {
+  try {
+    const p1 = path.join(ROOT_DIR, f);
+    if (fs.existsSync(p1)) {
+      STATIC_CACHE[f] = fs.readFileSync(p1);
+    } else {
+      const p2 = path.join(process.cwd(), f);
+      if (fs.existsSync(p2)) {
+        STATIC_CACHE[f] = fs.readFileSync(p2);
+      }
+    }
+  } catch (_) {}
+});
+
 async function appHandler(req, res) {
   try {
     const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -2927,21 +2944,36 @@ async function appHandler(req, res) {
       return await handleApiRequest(req, res, pathname, parsedUrl.searchParams);
     }
 
-    let safePath = pathname === "/" ? "/index.html" : pathname;
-    const filePath = path.normalize(path.join(ROOT_DIR, safePath));
-    if (!filePath.startsWith(ROOT_DIR)) {
-      res.writeHead(403);
-      return res.end("Forbidden");
+    let safePath = pathname === "/" ? "index.html" : pathname.replace(/^\//, "");
+
+    // 1. Phục vụ ngay từ bộ nhớ đệm (tránh lỗi 404 trên Vercel Serverless)
+    if (STATIC_CACHE[safePath]) {
+      const ext = path.extname(safePath).toLowerCase() || ".html";
+      res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
+      return res.end(STATIC_CACHE[safePath]);
+    }
+
+    // 2. Tìm file trên ổ đĩa
+    let filePath = path.normalize(path.join(ROOT_DIR, safePath));
+    if (!fs.existsSync(filePath)) {
+      filePath = path.normalize(path.join(process.cwd(), safePath));
     }
 
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath).toLowerCase();
       res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
       fs.createReadStream(filePath).pipe(res);
-    } else {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("404 Not Found");
+      return;
     }
+
+    // 3. SPA Fallback: Nếu không có đuôi mở rộng, trả về index.html
+    if (STATIC_CACHE["index.html"]) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return res.end(STATIC_CACHE["index.html"]);
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("404 Not Found");
   } catch (err) {
     sendJson(res, 500, { ok: false, error: err.message });
   }

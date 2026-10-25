@@ -2,7 +2,6 @@
   "name": "gia-dinh-xanh-home-service-booking",
   "version": "1.0.0",
   "description": "Hệ thống Đặt lịch Dịch vụ Gia đình (Full-stack Node.js Backend + Supabase PostgreSQL + Taste-Skill/Impeccable Frontend)",
-  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
