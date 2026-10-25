@@ -1,0 +1,73 @@
+@startuml SD-07-complete-service
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-07: Thực hiện, Hoàn tất dịch vụ (Phụ phí) & Quyết toán\n(Gộp FR-BOOK-05, FR-BOOK-06, FR-BOOK-07, FR-BOOK-09 & FR-NOT-001)
+
+actor "Provider" as Prov #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+participant "Notification Service" as Notif #E0F2FE
+
+== Giai đoạn 1: Bắt đầu Thực hiện Dịch vụ (FR-BOOK-05) ==
+
+Prov -> UI: 1. Có mặt tại nhà khách & Nhấn "Bắt đầu làm việc"
+activate Prov
+activate UI
+UI -> API: 2. PATCH /api/bookings/:id/status { status: 'in_progress' }
+activate API
+
+API -> DB: 3. Cập nhật booking_status: 'confirmed' -> 'in_progress' & Ghi status_history
+activate DB
+DB --> API: 4. Cập nhật thành công
+deactivate DB
+
+API -> Notif: 5. Bắn thông báo: "Thợ đã bắt đầu thực hiện công việc"
+activate Notif
+Notif --> API: 6. Dispatched
+deactivate Notif
+
+API --> UI: 7. HTTP 200 OK (status: 'in_progress')
+deactivate API
+UI --> Prov: 8. Hiển thị trạng thái "Đang thực hiện" & Đồng hồ đếm giờ
+deactivate UI
+
+== Giai đoạn 2: Hoàn tất dịch vụ, Phụ phí & Thu tiền (FR-BOOK-06 & FR-BOOK-09) ==
+
+Prov -> UI: 9. Nhấn "Hoàn tất": Nhập phụ phí phát sinh (total_incidental >= 0) và ghi chú
+activate UI
+UI -> API: 10. PATCH /api/bookings/:id/complete { total_incidental, incidental_notes }
+activate API
+
+group Transaction: Quyết toán & Đóng đơn
+    API -> DB: 11. Bắt đầu Transaction
+    activate DB
+    
+    API -> API: 12. Tính: final_amount = base_price + total_incidental
+    
+    API -> DB: 13. Cập nhật booking_status='completed', payment_status='paid', total_amount=final_amount
+    API -> DB: 14. Ghi booking_status_history (in_progress -> completed)
+    API -> DB: 15. COMMIT Transaction
+    DB --> API: 16. Hoàn tất đơn thành công
+    deactivate DB
+    
+    API -> Notif: 17. Bắn thông báo đến Khách hàng (Đơn đã hoàn tất, mời đánh giá)
+    activate Notif
+    Notif --> API: 18. Dispatched
+    deactivate Notif
+    
+    API --> UI: 19. HTTP 200 OK (status: 'completed', payment: 'paid', total: final_amount)
+    deactivate API
+    UI --> Prov: 20. Hiển thị màn hình "Hoàn tất dịch vụ", xuất biên lai thu tiền
+    deactivate UI
+end
+deactivate Prov
+
+@enduml

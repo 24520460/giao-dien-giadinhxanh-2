@@ -1,0 +1,100 @@
+@startuml SD-06-respond-booking
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-06: Phản hồi Booking (Accept/Reject, Hủy & Tự động hết hạn 24h)\n(Gộp FR-BOOK-03, FR-BOOK-04, FR-BOOK-07, FR-NOT-001 & FR-NOT-004)
+
+actor "Customer" as Cust #EBF2EE
+actor "Provider" as Prov #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+entity "Cron Worker" as Cron #FEF08A
+database "PostgreSQL" as DB #F1F3F5
+participant "Notification Service" as Notif #E0F2FE
+
+alt Nhánh 1: Thợ Chấp nhận đơn hẹn (FR-BOOK-03)
+    Prov -> UI: 1a. Nhấn "Chấp nhận đơn" (Accept)
+    activate Prov
+    activate UI
+    UI -> API: 2a. PATCH /api/bookings/:id/respond { action: 'accept' }
+    activate API
+    
+    note over API, DB
+        <b>Trạng thái hợp lệ duy nhất: 'confirmed' (không dùng accepted)</b>
+    end note
+    
+    API -> DB: 3a. [Transaction] Cập nhật booking_status = 'confirmed' & Ghi status_history
+    activate DB
+    DB --> API: 4a. Cập nhật thành công
+    deactivate DB
+    
+    API -> Notif: 5a. Bắn thông báo cho Khách hàng: "Thợ đã nhận đơn (confirmed)"
+    activate Notif
+    Notif --> API: 6a. Dispatched
+    deactivate Notif
+    
+    API --> UI: 7a. HTTP 200 OK (status: 'confirmed')
+    deactivate API
+    UI --> Prov: 8a. Hiển thị đơn chuyển sang trạng thái "Đã xác nhận" (Confirmed)
+    deactivate UI
+    deactivate Prov
+
+else Nhánh 2: Thợ Từ chối HOẶC Khách Hủy đơn (FR-BOOK-04)
+    alt Khách chủ động hủy đơn
+        Cust -> UI: 1b. Chọn "Hủy đặt lịch" & Nhập lý do
+        activate Cust
+        activate UI
+        UI -> API: 2b. PATCH /api/bookings/:id/cancel { reason }
+        activate API
+    else Thợ từ chối nhận việc
+        Prov -> UI: 1c. Chọn "Từ chối đơn" & Nhập lý do
+        activate Prov
+        activate UI
+        UI -> API: 2c. PATCH /api/bookings/:id/respond { action: 'reject', reason }
+        activate API
+    end
+    
+    API -> DB: 3b. Cập nhật status ('rejected' hoặc 'cancelled') & Ghi status_history
+    activate DB
+    DB --> API: 4b. Cập nhật thành công
+    deactivate DB
+    
+    API -> Notif: 5b. Bắn thông báo lý do hủy/từ chối đến bên còn lại
+    activate Notif
+    Notif --> API: 6b. Dispatched
+    deactivate Notif
+    
+    API --> UI: 7b. HTTP 200 OK
+    deactivate API
+    UI --> Cust: 8b. Cập nhật giao diện đơn sang trạng thái Đã hủy / Từ chối
+    deactivate UI
+    deactivate Cust
+    deactivate Prov
+
+else Nhánh 3: Tự động hết hạn sau 24h (FR-BOOK-07 & FR-NOT-004)
+    activate Cron
+    Cron -> API: 1d. Chạy định kỳ (Cron Job): POST /api/cron/expire-pending-bookings
+    activate API
+    
+    API -> DB: 2d. Quét các đơn 'pending' tạo quá 24h -> Cập nhật 'auto_cancelled' & Ghi history
+    activate DB
+    DB --> API: 3d. Cập nhật danh sách đơn hết hạn
+    deactivate DB
+    
+    API -> Notif: 4d. Bắn thông báo hủy do quá hạn 24h đến cả Khách hàng và Thợ
+    activate Notif
+    Notif --> API: 5d. Dispatched
+    deactivate Notif
+    
+    API --> Cron: 6d. Hoàn tất xử lý hết hạn
+    deactivate API
+    deactivate Cron
+end
+
+@enduml

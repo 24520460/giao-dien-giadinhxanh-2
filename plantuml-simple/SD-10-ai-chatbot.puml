@@ -1,0 +1,60 @@
+@startuml SD-10-ai-chatbot
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-10: Tư vấn & Đề xuất dịch vụ qua AI Chatbot (Grounding thực tế)\n(Gộp FR-AI-001, FR-AI-003, FR-AI-004, FR-AI-005, FR-AI-006, FR-AI-007 & FR-AI-008)
+
+actor "User" as User #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+participant "External AI Provider\n(Gemini / OpenAI)" as AIModel #E0F2FE
+
+User -> UI: 1. Đặt câu hỏi tìm kiếm dịch vụ / tư vấn sự cố
+activate User
+activate UI
+
+UI -> API: 2. POST /api/ai/chat { conversation_id, message }
+activate API
+
+API -> API: 3. Tiền xử lý & Lọc sạch dữ liệu nhạy cảm (PII Filter - FR-AI-005)
+
+API -> DB: 4. Truy vấn Catalog dịch vụ đang mở & Thợ uy tín thực tế (Grounding - FR-AI-004)
+activate DB
+DB --> API: 5. Dữ liệu thực tế: Giá niêm yết Admin, tên thợ, điểm đánh giá
+deactivate DB
+
+note over API, AIModel
+    <b>Grounding chống bịa đặt (Anti-Hallucination):</b>
+    Đưa thông tin dịch vụ và thợ thực tế vào Context Prompt gửi cho AI
+end note
+
+API -> AIModel: 6. Gọi AI sinh câu trả lời kèm Context thực tế
+activate AIModel
+
+alt AI Phản hồi thành công (< 8s)
+    AIModel --> API: 7a. Câu trả lời tự nhiên kèm cấu trúc Gợi ý Thợ & Dịch vụ
+    API -> DB: 8a. Lưu tin nhắn vào ai_messages (FR-AI-006)
+    activate DB
+    DB --> API: 9a. Lưu thành công
+    deactivate DB
+    API --> UI: 10a. HTTP 200 OK (Message + Thẻ hành động Action Cards)
+    UI --> User: 11a. Hiển thị câu trả lời AI kèm nút bấm "Đặt dịch vụ ngay"
+else AI Gặp sự cố / Timeout / Vượt Quota (FR-AI-007)
+    AIModel --> API: 7b. Lỗi kết nối / Quá tải
+    deactivate AIModel
+    API -> API: 8b. [Fallback an toàn] Tự sinh gợi ý từ danh mục đã truy vấn ở Bước 5
+    API --> UI: 9b. HTTP 200 OK (Fallback Message + Danh sách kết quả từ DB)
+    deactivate API
+    UI --> User: 10b. Hiển thị phản hồi thay thế với danh sách dịch vụ thực tế
+end
+deactivate UI
+deactivate User
+
+@enduml

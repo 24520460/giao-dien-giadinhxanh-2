@@ -1,0 +1,54 @@
+@startuml SD-03-search-filter-map
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-03: Tìm kiếm, Lọc dịch vụ & Hiển thị Bản đồ\n(Gộp FR-SEARCH-01, FR-SEARCH-02, FR-SEARCH-03 & FR-MAP-01)
+
+actor "Customer" as Cust #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+participant "Map Provider API" as MapAPI #E0F2FE
+
+Cust -> UI: 1. Nhập từ khóa, chọn danh mục, khu vực (phường), khoảng giá & sắp xếp
+activate Cust
+activate UI
+
+UI -> API: 2. GET /api/services/search (keyword, category, ward, price range)
+activate API
+
+API -> DB: 3. Lọc dịch vụ hoạt động, thợ đã verified & đúng khu vực, giá Admin định chuẩn
+activate DB
+DB --> API: 4. Danh sách dịch vụ và thợ thỏa mãn điều kiện
+deactivate DB
+
+API --> UI: 5. HTTP 200 OK (Danh sách kết quả)
+deactivate API
+
+alt Chọn Chế độ Bản đồ (Map View - FR-MAP-01)
+    UI -> MapAPI: 6a. Yêu cầu tải bản đồ & Geocoding tọa độ khu vực
+    activate MapAPI
+    
+    alt Map API thành công
+        MapAPI --> UI: 7a. Trả về Map Tiles & Coordinates
+        UI -> UI: 8a. Hiển thị Pins/Markers vị trí thợ kèm Popup giá dịch vụ
+    else Map API lỗi / Timeout
+        MapAPI --> UI: 7b. Lỗi kết nối Map API
+        deactivate MapAPI
+        UI -> UI: 8b. [Fallback tự động] Chuyển sang hiển thị Danh sách thẻ chuẩn (List View)
+    end
+else Chọn Chế độ Danh sách thông thường (List View)
+    UI -> UI: 6b. Hiển thị Grid thẻ dịch vụ kèm phân trang
+end
+
+UI --> Cust: 9. Xem kết quả tìm kiếm và lựa chọn dịch vụ
+deactivate UI
+deactivate Cust
+
+@enduml

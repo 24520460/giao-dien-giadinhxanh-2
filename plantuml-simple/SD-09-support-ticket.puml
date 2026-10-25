@@ -1,0 +1,100 @@
+@startuml SD-09-support-ticket
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-09: Tạo & Xử lý Phiếu hỗ trợ (Support Ticket & Ghi chú nội bộ)\n(Gộp FR-TKT-001, FR-TKT-003, FR-TKT-004, FR-TKT-005, FR-TKT-006, FR-TKT-007 & FR-ADMIN-008)
+
+actor "User\n(Customer/Provider)" as User #EBF2EE
+actor "Admin" as Admin #FEF08A
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+participant "Notification Service" as Notif #E0F2FE
+
+== Giai đoạn 1: Người dùng Gửi Yêu cầu Hỗ trợ (FR-TKT-001) ==
+
+User -> UI: 1. Nhập thông tin sự cố (tiêu đề, phân loại, nội dung, mã booking)
+activate User
+activate UI
+UI -> API: 2. POST /api/tickets
+activate API
+API -> DB: 3. Lưu support_tickets (status='open')
+activate DB
+DB --> API: 4. Tạo ticket thành công
+deactivate DB
+API --> UI: 5. HTTP 201 Created
+deactivate API
+UI --> User: 6. Thông báo "Yêu cầu hỗ trợ đã được tiếp nhận"
+deactivate UI
+deactivate User
+
+== Giai đoạn 2: Admin Tiếp nhận, Xử lý & Phân quyền Ghi chú (FR-TKT-004) ==
+
+Admin -> UI: 7. Mở danh sách Ticket, chọn Ticket cần xử lý & Nhập nội dung
+activate Admin
+activate UI
+
+alt Nhánh A: Ghi chú nội bộ Admin (visibility = 'internal')
+    Admin -> UI: 8a. Chọn "Ghi chú nội bộ (Chỉ Admin xem)" & Gửi
+    UI -> API: 9a. POST /api/tickets/:id/messages { message, visibility: 'internal' }
+    activate API
+    API -> DB: 10a. Lưu ticket_messages (visibility='internal')
+    activate DB
+    DB --> API: 11a. Lưu thành công (Không bắn thông báo cho User)
+    deactivate DB
+    API --> UI: 12a. HTTP 201 Created
+    deactivate API
+    UI --> Admin: 13a. Hiển thị ghi chú với nhãn vàng "[Nội bộ - Ẩn với khách]"
+
+else Nhánh B: Phản hồi công khai cho Người dùng (visibility = 'public')
+    Admin -> UI: 8b. Nhập phản hồi giải đáp cho User & Gửi
+    UI -> API: 9b. POST /api/tickets/:id/messages { message, visibility: 'public' }
+    activate API
+    API -> DB: 10b. Lưu ticket_messages (visibility='public')
+    activate DB
+    DB --> API: 11b. Lưu thành công
+    deactivate DB
+    API -> Notif: 12b. Bắn thông báo đến User (Admin đã phản hồi ticket #ID)
+    activate Notif
+    Notif --> API: 13b. Dispatched
+    deactivate Notif
+    API --> UI: 14b. HTTP 201 Created
+    deactivate API
+    UI --> Admin: 15b. Hiển thị tin nhắn công khai trong hội thoại
+end
+
+== Giai đoạn 3: Đóng Ticket & Xem Lịch sử (FR-TKT-005, 007) ==
+
+Admin -> UI: 16. Chọn "Đánh dấu Đã giải quyết" (Resolve)
+UI -> API: 17. PATCH /api/tickets/:id/status { status: 'resolved' }
+activate API
+API -> DB: 18. Cập nhật support_tickets (status='resolved')
+activate DB
+DB --> API: 19. Cập nhật thành công
+deactivate DB
+API --> UI: 20. HTTP 200 OK (Resolved)
+deactivate API
+UI --> Admin: 21. Cập nhật trạng thái Ticket: Resolved
+
+User -> UI: 22. Mở xem chi tiết phản hồi của Ticket (FR-TKT-007)
+activate User
+UI -> API: 23. GET /api/tickets/:id
+activate API
+API -> DB: 24. SELECT tin nhắn công khai (Lọc: visibility = 'public', ẩn các ghi chú internal)
+activate DB
+DB --> API: 25. Danh sách tin nhắn trao đổi công khai
+deactivate DB
+API --> UI: 26. HTTP 200 OK (Public messages)
+deactivate API
+UI --> User: 27. Hiển thị nội dung phản hồi từ ban quản trị
+deactivate UI
+deactivate User
+deactivate Admin
+
+@enduml

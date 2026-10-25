@@ -1,0 +1,68 @@
+@startuml SD-01-register-provider
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-01: Đăng ký Đối tác Thợ & Thiết lập Khu vực Hoạt động\n(Gộp FR-AUTH-02 & FR-PROV-03)
+
+actor "Visitor\n(Provider)" as Prov #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+participant "Supabase Auth" as Auth #E0F2FE
+database "PostgreSQL" as DB #F1F3F5
+
+Prov -> UI: 1. Nhập thông tin đăng ký (Họ tên, email, CCCD, khu vực hoạt động)
+activate Prov
+activate UI
+UI -> UI: 2. Validate client-side
+
+UI -> API: 3. POST /api/onboarding/provider
+activate API
+
+API -> Auth: 4. Tạo tài khoản Auth (email, password)
+activate Auth
+
+alt Email đã tồn tại hoặc không hợp lệ
+    Auth --> API: 5a. Lỗi tạo Auth
+    API --> UI: 5b. HTTP 400 Bad Request (Email đã tồn tại)
+    UI --> Prov: 5c. Hiển thị thông báo lỗi
+else Tạo Auth thành công (trả về auth_user_id)
+    Auth --> API: 6. Auth User Created
+    deactivate Auth
+    
+    group Transaction: Lưu hồ sơ Thợ & Khu vực
+        API -> DB: 7. Bắt đầu Transaction
+        activate DB
+        
+        API -> DB: 8. Kiểm tra số điện thoại (users)
+        DB --> API: 9. Kết quả kiểm tra
+        
+        alt Số điện thoại đã được đăng ký
+            API -> DB: 10a. ROLLBACK
+            API -> Auth: 10b. Xóa Auth User đã tạo
+            API --> UI: 10c. HTTP 409 Conflict (Trùng số điện thoại)
+            UI --> Prov: 10d. Báo lỗi trùng số điện thoại
+        else SĐT hợp lệ
+            API -> DB: 11. Lưu thông tin users (role='provider', is_active=false)
+            API -> DB: 12. Lưu provider_profiles (status='pending')
+            API -> DB: 13. Lưu provider_areas (danh sách xã/phường)
+            API -> DB: 14. Ghi audit_logs ('REGISTER_PROVIDER')
+            API -> DB: 15. COMMIT Transaction
+            DB --> API: 16. Lưu thành công
+            deactivate DB
+            
+            API --> UI: 17. HTTP 201 Created (Chờ duyệt KYC)
+            deactivate API
+            UI --> Prov: 18. Báo đăng ký thành công, chuyển màn hình chờ Admin duyệt
+            deactivate UI
+        end
+    end
+end
+deactivate Prov
+
+@enduml

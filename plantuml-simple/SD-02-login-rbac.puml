@@ -1,0 +1,64 @@
+@startuml SD-02-login-rbac
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-02: Đăng nhập & Điều hướng Phân quyền theo Role / Trạng thái\n(Gộp FR-AUTH-03 & FR-AUTH-06)
+
+actor "User" as User #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+participant "Supabase Auth" as Auth #E0F2FE
+database "PostgreSQL\n(users)" as DB #F1F3F5
+
+User -> UI: 1. Nhập Email & Mật khẩu
+activate User
+activate UI
+
+UI -> API: 2. POST /api/auth/login { email, password }
+activate API
+
+API -> Auth: 3. Xác thực tài khoản (GoTrue)
+activate Auth
+
+alt Sai email hoặc mật khẩu
+    Auth --> API: 4a. Xác thực thất bại
+    API --> UI: 4b. HTTP 401 Unauthorized
+    UI --> User: 4c. Thông báo sai thông tin đăng nhập
+else Xác thực thành công (trả về auth_uid)
+    Auth --> API: 5. Trả về Session Token & Auth UID
+    deactivate Auth
+    
+    API -> DB: 6. Truy vấn Role & Trạng thái (is_active) từ bảng users
+    activate DB
+    DB --> API: 7. Trả về User Record
+    deactivate DB
+    
+    alt Tài khoản bị Khóa / Chưa kích hoạt (is_active = false)
+        API -> Auth: 8a. Thu hồi phiên đăng nhập
+        API --> UI: 8b. HTTP 403 Forbidden (Tài khoản đang bị khóa)
+        UI --> User: 8c. Chặn truy cập & thông báo tài khoản bị vô hiệu hóa
+    else Tài khoản Hoạt động bình thường (is_active = true)
+        API -> API: 9. Tạo JWT Session (user_id, role, full_name)
+        API --> UI: 10. HTTP 200 OK (Token + User Role)
+        deactivate API
+        
+        alt role == 'admin'
+            UI -> UI: 11a. Điều hướng sang Admin Portal (/admin-dashboard)
+        else role == 'provider'
+            UI -> UI: 11b. Điều hướng sang Provider Portal (/provider-schedule)
+        else role == 'customer'
+            UI -> UI: 11c. Điều hướng sang Khách hàng Portal (/home)
+        end
+        UI --> User: 12. Hiển thị Dashboard theo quyền hạn
+        deactivate UI
+    end
+end
+deactivate User
+
+@enduml

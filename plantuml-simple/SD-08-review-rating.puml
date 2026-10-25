@@ -1,0 +1,59 @@
+@startuml SD-08-review-rating
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-08: Gửi Đánh giá & Tính lại Điểm Hiệu suất Provider\n(Gộp FR-REV-001, FR-REV-002, FR-REV-006, FR-REV-007 & FR-PROV-05)
+
+actor "Customer" as Cust #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+
+Cust -> UI: 1. Chọn số sao (1-5 sao) & Viết nhận xét đánh giá đơn hoàn tất
+activate Cust
+activate UI
+
+UI -> API: 2. POST /api/reviews { booking_id, rating, comment }
+activate API
+
+group Transaction: Kiểm tra Quyền, Lưu Review & Cập nhật Điểm Thợ
+    API -> DB: 3. Bắt đầu Transaction
+    activate DB
+    
+    API -> DB: 4. Kiểm tra điều kiện (Đúng khách hàng, đơn đã 'completed', chưa từng đánh giá)
+    DB --> API: 5. Kết quả kiểm tra
+    
+    alt Không đúng khách hàng sở hữu đơn
+        API -> DB: 6a. ROLLBACK
+        API --> UI: 6b. HTTP 403 Forbidden (Chặn thợ tự đánh giá chính mình)
+        UI --> Cust: 6c. Báo lỗi không có quyền đánh giá
+    else Đơn chưa 'completed' HOẶC Đã từng đánh giá trước đó
+        API -> DB: 7a. ROLLBACK
+        API --> UI: 7b. HTTP 400 / 409 (Đơn chưa kết thúc hoặc đã có đánh giá)
+        UI --> Cust: 7c. Báo lỗi trạng thái không hợp lệ
+    else Thỏa mãn toàn bộ điều kiện
+        API -> DB: 8. Lưu bản ghi reviews mới (rating, comment, is_visible=true)
+        
+        API -> DB: 9. Tính lại AVG(rating) & COUNT(reviews) của thợ từ các đánh giá hợp lệ
+        DB --> API: 10. Trả về điểm trung bình và tổng lượt đánh giá mới
+        
+        API -> DB: 11. Cập nhật average_rating & total_reviews vào provider_profiles
+        API -> DB: 12. COMMIT Transaction
+        DB --> API: 13. Cập nhật thành công
+        deactivate DB
+        
+        API --> UI: 14. HTTP 201 Created (Review ID, new_average_rating)
+        deactivate API
+        UI --> Cust: 15. Thông báo cảm ơn đánh giá & Cập nhật điểm sao trên hồ sơ thợ
+        deactivate UI
+    end
+end
+deactivate Cust
+
+@enduml

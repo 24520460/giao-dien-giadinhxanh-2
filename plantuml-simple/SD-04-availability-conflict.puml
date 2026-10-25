@@ -1,0 +1,63 @@
+@startuml SD-04-availability-conflict
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-04: Cấu hình Lịch rảnh, Ngoại lệ & Kiểm tra Xung đột\n(Gộp FR-AVAIL-01, FR-AVAIL-02 & FR-AVAIL-04)
+
+actor "Provider" as Prov #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+
+Prov -> UI: 1. Đăng ký ngày nghỉ ngoại lệ HOẶC Cập nhật khung giờ làm việc
+activate Prov
+activate UI
+
+alt Nhánh A: Đăng ký Ngày nghỉ ngoại lệ (FR-AVAIL-02)
+    UI -> API: 2a. POST /api/availability/exceptions (exception_date, reason)
+    activate API
+    
+    API -> DB: 3a. Kiểm tra đơn hẹn đã chốt (booking_status = 'confirmed') trong ngày đó
+    activate DB
+    DB --> API: 4a. Kết quả kiểm tra
+    
+    alt Có đơn đã chốt (confirmed) trong ngày nghỉ đăng ký
+        API --> UI: 5a. HTTP 409 Conflict (Có đơn hẹn đã xác nhận)
+        UI --> Prov: 6a. Cảnh báo xung đột: Phải hoàn tất/dời lịch trước khi chọn nghỉ
+    else Không có đơn xung đột
+        API -> DB: 7a. Lưu ngày nghỉ vào availability_exceptions
+        DB --> API: 8a. Lưu thành công
+        deactivate DB
+        API --> UI: 9a. HTTP 201 Created
+        UI --> Prov: 10a. Cập nhật lịch: Đánh dấu ngày nghỉ
+    end
+
+else Nhánh B: Cập nhật Khung giờ làm việc hàng tuần (FR-AVAIL-01)
+    UI -> API: 2b. PUT /api/availability/schedules (day_of_week, start_time, end_time)
+    
+    API -> DB: 3b. Kiểm tra các đơn 'confirmed' tương lai có bị lọt ra ngoài giờ mới không
+    activate DB
+    DB --> API: 4b. Kết quả kiểm tra
+    
+    alt Có đơn đã xác nhận (confirmed) nằm ngoài khung giờ mới
+        API --> UI: 5b. HTTP 409 Conflict (Xung đột với lịch hẹn đã xác nhận)
+        UI --> Prov: 6b. Cảnh báo xung đột: Khung giờ mới làm rớt đơn đã chốt
+    else Không có xung đột
+        API -> DB: 7b. Lưu khung giờ mới vào availability_schedules
+        DB --> API: 8b. Lưu thành công
+        deactivate DB
+        API --> UI: 9b. HTTP 200 OK
+        deactivate API
+        UI --> Prov: 10b. Cập nhật bảng giờ làm việc thành công
+    end
+end
+deactivate UI
+deactivate Prov
+
+@enduml

@@ -1,0 +1,60 @@
+@startuml SD-05-create-booking
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-05: Tạo yêu cầu Booking (Kiểm tra điều kiện, Chống trùng lịch & Lưu Snapshot)\n(Gộp FR-CUST-03, FR-AVAIL-03, FR-AVAIL-04, FR-BOOK-01, FR-BOOK-02, FR-BOOK-07 & FR-NOT-001)
+
+actor "Customer" as Cust #EBF2EE
+boundary "Web UI" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+participant "Notification Service" as Notif #E0F2FE
+
+Cust -> UI: 1. Chọn Dịch vụ, Thợ, Giờ hẹn (>= 2h tới), Địa chỉ mặc định & Ghi chú
+activate Cust
+activate UI
+
+UI -> API: 2. POST /api/bookings (service_id, provider_id, booking_time, address)
+activate API
+
+group Transaction: Kiểm tra & Khởi tạo Đơn Đặt lịch
+    API -> DB: 3. Bắt đầu Transaction
+    activate DB
+    
+    API -> DB: 4. Kiểm tra Dịch vụ, Thợ & Lấy giá niêm yết Admin (services.base_price)
+    DB --> API: 5. Thông tin dịch vụ & thợ
+    
+    API -> DB: 6. Kiểm tra Slot rảnh & Chống Double-booking trong phạm vi +- 2 giờ
+    DB --> API: 7. Kết quả kiểm tra lịch
+    
+    alt Thợ bận, trùng ngày nghỉ hoặc trùng đơn khác (+- 2h)
+        API -> DB: 8a. ROLLBACK
+        API --> UI: 8b. HTTP 409 Conflict (Khung giờ này thợ đã có lịch hẹn)
+        UI --> Cust: 8c. Báo lỗi trùng giờ, gợi ý khách chọn giờ khác
+    else Khung giờ hoàn toàn khả dụng
+        API -> DB: 9. Tạo booking (status='pending', payment='unpaid', snapshot giá & địa chỉ)
+        API -> DB: 10. Ghi booking_status_history (to_status='pending')
+        API -> DB: 11. COMMIT Transaction
+        DB --> API: 12. Tạo đơn thành công (booking_id)
+        deactivate DB
+        
+        API -> Notif: 13. Bắn thông báo realtime đến Thợ (Có đơn mới cần phản hồi)
+        activate Notif
+        Notif --> API: 14. Dispatched
+        deactivate Notif
+        
+        API --> UI: 15. HTTP 201 Created (booking_id, status='pending')
+        deactivate API
+        UI --> Cust: 16. Hiển thị "Đặt lịch thành công, chờ thợ xác nhận trong 24h"
+        deactivate UI
+    end
+end
+deactivate Cust
+
+@enduml

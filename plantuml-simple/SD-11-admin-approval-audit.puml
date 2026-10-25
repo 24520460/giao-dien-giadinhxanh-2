@@ -1,0 +1,83 @@
+@startuml SD-11-admin-approval-audit
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+
+title SD-11: Admin Phê duyệt Provider, Kiểm duyệt & Nhật ký Kiểm toán (Audit Log)\n(Gộp FR-ADMIN-003, FR-ADMIN-004, FR-ADMIN-007, FR-ADMIN-009, FR-REV-005 & FR-SVC-03)
+
+actor "Admin" as Admin #FEF08A
+boundary "Web UI\n(Admin Portal)" as UI #FFFFFF
+control "API / Backend" as API #FFFFFF
+database "PostgreSQL" as DB #F1F3F5
+participant "Notification Service" as Notif #E0F2FE
+
+== Nhánh 1: Phê duyệt Hồ sơ Thợ (KYC) & Kích hoạt Tài khoản (FR-ADMIN-003) ==
+
+Admin -> UI: 1a. Xem hồ sơ CCCD chờ duyệt & Nhấn "Phê duyệt đối tác"
+activate Admin
+activate UI
+UI -> API: 2a. PATCH /api/admin/providers/:id/verify { action: 'approve' }
+activate API
+
+group Transaction: Duyệt Thợ & Ghi Nhật ký
+    API -> DB: 3a. Cập nhật provider_profiles: verification_status = 'verified'
+    activate DB
+    API -> DB: 4a. Cập nhật users: is_active = true (kích hoạt tài khoản)
+    API -> DB: 5a. Ghi audit_logs ('APPROVE_PROVIDER' kèm lý do)
+    API -> DB: 6a. COMMIT Transaction
+    DB --> API: 7a. Phê duyệt thành công
+    deactivate DB
+    
+    API -> Notif: 8a. Bắn thông báo chúc mừng đến Thợ (Tài khoản đã được duyệt)
+    activate Notif
+    Notif --> API: 9a. Dispatched
+    deactivate Notif
+    
+    API --> UI: 10a. HTTP 200 OK (status: 'verified')
+    UI --> Admin: 11a. Cập nhật giao diện: Thợ đã chuyển sang trạng thái "Đã duyệt"
+end
+
+== Nhánh 2: Kiểm duyệt Ẩn Đánh giá vi phạm & Tái tính Điểm Thợ (FR-REV-005) ==
+
+Admin -> UI: 12b. Phát hiện review xúc phạm/spam -> Nhấn "Ẩn đánh giá"
+UI -> API: 13b. PATCH /api/admin/reviews/:id/moderation { is_visible: false, reason }
+activate API
+
+group Transaction: Ẩn Review, Tính lại Điểm & Ghi Audit Log
+    API -> DB: 14b. Cập nhật reviews: is_visible = false
+    activate DB
+    API -> DB: 15b. Tái tính toán lại AVG(rating) & COUNT(reviews) của thợ
+    API -> DB: 16b. Cập nhật điểm mới vào provider_profiles
+    API -> DB: 17b. Ghi audit_logs ('MODERATE_REVIEW_HIDE')
+    API -> DB: 18b. COMMIT Transaction
+    DB --> API: 19b. Cập nhật thành công
+    deactivate DB
+    
+    API --> UI: 20b. HTTP 200 OK
+    UI --> Admin: 21b. Gắn nhãn "[Đã ẩn bởi Admin]" trên đánh giá
+end
+
+== Nhánh 3: Admin Định giá Dịch vụ Tập trung (FR-SVC-03) ==
+
+Admin -> UI: 22c. Điều chỉnh giá niêm yết dịch vụ tập trung & Lưu
+UI -> API: 23c. PUT /api/admin/services/:id { base_price, pricing_type }
+activate API
+
+API -> DB: 24c. Cập nhật services (base_price, pricing_type)
+activate DB
+API -> DB: 25c. Ghi audit_logs ('UPDATE_SERVICE_PRICE', details: 'Thay đổi giá niêm yết')
+DB --> API: 26c. Cập nhật giá thành công
+deactivate DB
+
+API --> UI: 27c. HTTP 200 OK (Giá mới)
+deactivate API
+UI --> Admin: 28c. Thông báo cập nhật giá thành công
+deactivate UI
+deactivate Admin
+
+@enduml
