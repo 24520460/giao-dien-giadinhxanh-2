@@ -2918,42 +2918,85 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
-// Đọc trước các file tĩnh cốt lõi vào bộ nhớ để NFT (Node File Trace) đóng gói tự động trên Vercel
-const STATIC_CACHE = {};
-const CORE_FILES = ["index.html", "styles.css", "app.js", "db-mock.js"];
-CORE_FILES.forEach((f) => {
+// Đọc trực tiếp các file tĩnh bằng chuỗi tường minh để NFT (Node File Trace) đóng gói 100% trên Vercel
+let staticIndexHtml = "";
+let staticStylesCss = "";
+let staticAppJs = "";
+let staticDbMock = "";
+
+try {
+  staticIndexHtml = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+} catch (_) {
   try {
-    const p1 = path.join(ROOT_DIR, f);
-    if (fs.existsSync(p1)) {
-      STATIC_CACHE[f] = fs.readFileSync(p1);
-    } else {
-      const p2 = path.join(process.cwd(), f);
-      if (fs.existsSync(p2)) {
-        STATIC_CACHE[f] = fs.readFileSync(p2);
-      }
-    }
+    staticIndexHtml = fs.readFileSync(path.join(process.cwd(), "index.html"), "utf8");
   } catch (_) {}
-});
+}
+
+try {
+  staticStylesCss = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
+} catch (_) {
+  try {
+    staticStylesCss = fs.readFileSync(path.join(process.cwd(), "styles.css"), "utf8");
+  } catch (_) {}
+}
+
+try {
+  staticAppJs = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+} catch (_) {
+  try {
+    staticAppJs = fs.readFileSync(path.join(process.cwd(), "app.js"), "utf8");
+  } catch (_) {}
+}
+
+try {
+  staticDbMock = fs.readFileSync(path.join(__dirname, "db-mock.js"), "utf8");
+} catch (_) {
+  try {
+    staticDbMock = fs.readFileSync(path.join(process.cwd(), "db-mock.js"), "utf8");
+  } catch (_) {}
+}
 
 async function appHandler(req, res) {
   try {
     const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const pathname = decodeURIComponent(parsedUrl.pathname);
 
+    // API Router
     if (pathname.startsWith("/api/")) {
       return await handleApiRequest(req, res, pathname, parsedUrl.searchParams);
     }
 
-    let safePath = pathname === "/" ? "index.html" : pathname.replace(/^\//, "");
-
-    // 1. Phục vụ ngay từ bộ nhớ đệm (tránh lỗi 404 trên Vercel Serverless)
-    if (STATIC_CACHE[safePath]) {
-      const ext = path.extname(safePath).toLowerCase() || ".html";
-      res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
-      return res.end(STATIC_CACHE[safePath]);
+    // 1. Phục vụ nhanh các file cốt lõi từ bộ nhớ đệm
+    if (pathname === "/" || pathname === "/index.html") {
+      if (staticIndexHtml) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        return res.end(staticIndexHtml);
+      }
     }
 
-    // 2. Tìm file trên ổ đĩa
+    if (pathname === "/styles.css") {
+      if (staticStylesCss) {
+        res.writeHead(200, { "Content-Type": "text/css; charset=utf-8" });
+        return res.end(staticStylesCss);
+      }
+    }
+
+    if (pathname === "/app.js") {
+      if (staticAppJs) {
+        res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+        return res.end(staticAppJs);
+      }
+    }
+
+    if (pathname === "/db-mock.js") {
+      if (staticDbMock) {
+        res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+        return res.end(staticDbMock);
+      }
+    }
+
+    // 2. Phục vụ các tài nguyên tĩnh khác (assets/vendor/leaflet...)
+    let safePath = pathname.replace(/^\//, "");
     let filePath = path.normalize(path.join(ROOT_DIR, safePath));
     if (!fs.existsSync(filePath)) {
       filePath = path.normalize(path.join(process.cwd(), safePath));
@@ -2966,10 +3009,10 @@ async function appHandler(req, res) {
       return;
     }
 
-    // 3. SPA Fallback: Nếu không có đuôi mở rộng, trả về index.html
-    if (STATIC_CACHE["index.html"]) {
+    // 3. SPA Fallback: Nếu không phải file tĩnh, luôn trả về index.html (200 OK)
+    if (staticIndexHtml) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return res.end(STATIC_CACHE["index.html"]);
+      return res.end(staticIndexHtml);
     }
 
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });

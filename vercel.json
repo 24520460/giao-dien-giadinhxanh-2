@@ -1,6 +1,14 @@
 {
   "version": 2,
   "cleanUrls": true,
+  "functions": {
+    "app.js": {
+      "includeFiles": "{index.html,styles.css,app.js,db-mock.js,assets/**/*}"
+    },
+    "api/**/*.js": {
+      "includeFiles": "{index.html,styles.css,app.js,db-mock.js,assets/**/*}"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
