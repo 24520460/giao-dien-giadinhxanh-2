@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Bộ Sưu Tập Giao Diện Dự Án Gia Đình Xanh (35 Màn Hình)</title>
+  <style>
+    :root {
+      --bg: #F4F6F8;
+      --card: #FFFFFF;
+      --primary: #1B4332;
+      --accent: #E07A5F;
+      --text: #1F2937;
+      --muted: #6B7280;
+      --border: #E5E7EB;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 32px 24px;
+    }
+    .header {
+      max-width: 1400px;
+      margin: 0 auto 32px;
+      background: var(--card);
+      padding: 24px 32px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 24px;
+      color: var(--primary);
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .grid {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 24px;
+    }
+    .item {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .item:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+    }
+    .preview-box {
+      width: 100%;
+      height: 230px;
+      overflow: hidden;
+      background: #E5E7EB;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+    }
+    .preview-box img {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: transform 0.3s;
+    }
+    .item:hover .preview-box img {
+      transform: scale(1.02);
+    }
+    .info {
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .meta {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .title {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin: 0 0 12px 0;
+    }
+    .btn-view {
+      margin-top: auto;
+      display: inline-block;
+      text-align: center;
+      padding: 8px 14px;
+      background: var(--primary);
+      color: #FFF;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .btn-view:hover {
+      background: #143527;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Bộ Sưu Tập Giao Diện Dự Án Gia Đình Xanh</h1>
+    <p>Chế độ Product/User Flow thực tế · Độ phân giải Retina 2x sắc nét · Tổng cộng 35 màn hình &amp; modal</p>
+  </div>
+  <div class="grid">
+    
+      <div class="item">
+        <a href="01_0.1_Dang_Nhap_Dang_Ky.png" target="_blank" class="preview-box">
+          <img src="01_0.1_Dang_Nhap_Dang_Ky.png" alt="0.1. Đăng nhập / Đăng ký / Khôi phục mật khẩu" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Xác thực · Màn hình 0.1 (page)</div>
+          <div class="title">0.1. Đăng nhập / Đăng ký / Khôi phục mật khẩu</div>
+          <a href="01_0.1_Dang_Nhap_Dang_Ky.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="02_0.2_Thiet_Lap_Ho_So_Khach_Hang.png" target="_blank" class="preview-box">
+          <img src="02_0.2_Thiet_Lap_Ho_So_Khach_Hang.png" alt="0.2. Thiết lập hồ sơ Khách hàng (Customer Onboarding)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Xác thực · Màn hình 0.2 (page)</div>
+          <div class="title">0.2. Thiết lập hồ sơ Khách hàng (Customer Onboarding)</div>
+          <a href="02_0.2_Thiet_Lap_Ho_So_Khach_Hang.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="03_0.3_Dang_Ky_Hanh_Nghe_Tho.png" target="_blank" class="preview-box">
+          <img src="03_0.3_Dang_Ky_Hanh_Nghe_Tho.png" alt="0.3. Đăng ký hành nghề Thợ (Provider Onboarding)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Xác thực · Màn hình 0.3 (page)</div>
+          <div class="title">0.3. Đăng ký hành nghề Thợ (Provider Onboarding)</div>
+          <a href="03_0.3_Dang_Ky_Hanh_Nghe_Tho.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="04_0.4_Trang_Thai_Ho_So_Tho.png" target="_blank" class="preview-box">
+          <img src="04_0.4_Trang_Thai_Ho_So_Tho.png" alt="0.4. Trạng thái Hồ sơ Thợ (Chờ duyệt / Bị từ chối)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Xác thực · Màn hình 0.4 (page)</div>
+          <div class="title">0.4. Trạng thái Hồ sơ Thợ (Chờ duyệt / Bị từ chối)</div>
+          <a href="04_0.4_Trang_Thai_Ho_So_Tho.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="05_0.5_Thong_Bao_Tai_Khoan_Bi_Khoa.png" target="_blank" class="preview-box">
+          <img src="05_0.5_Thong_Bao_Tai_Khoan_Bi_Khoa.png" alt="0.5. Thông báo Tài khoản bị khóa (Account Suspended)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Xác thực · Màn hình 0.5 (page)</div>
+          <div class="title">0.5. Thông báo Tài khoản bị khóa (Account Suspended)</div>
+          <a href="05_0.5_Thong_Bao_Tai_Khoan_Bi_Khoa.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="06_1.1_Trang_Chu_Kham_Pha_Dich_Vu.png" target="_blank" class="preview-box">
+          <img src="06_1.1_Trang_Chu_Kham_Pha_Dich_Vu.png" alt="1.1. Trang chủ & Khám phá dịch vụ" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.1 (page)</div>
+          <div class="title">1.1. Trang chủ & Khám phá dịch vụ</div>
+          <a href="06_1.1_Trang_Chu_Kham_Pha_Dich_Vu.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="07_1.2_Cau_Hinh_Dat_Lich_Booking_Wizard.png" target="_blank" class="preview-box">
+          <img src="07_1.2_Cau_Hinh_Dat_Lich_Booking_Wizard.png" alt="1.2. Cấu hình dịch vụ trước khi đặt (Booking Wizard)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.2 (page)</div>
+          <div class="title">1.2. Cấu hình dịch vụ trước khi đặt (Booking Wizard)</div>
+          <a href="07_1.2_Cau_Hinh_Dat_Lich_Booking_Wizard.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="08_1.3_Theo_Doi_Don_Hang_Live_Tracking.png" target="_blank" class="preview-box">
+          <img src="08_1.3_Theo_Doi_Don_Hang_Live_Tracking.png" alt="1.3. Theo dõi đơn hàng trực tiếp (Live Tracking)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.3 (page)</div>
+          <div class="title">1.3. Theo dõi đơn hàng trực tiếp (Live Tracking)</div>
+          <a href="08_1.3_Theo_Doi_Don_Hang_Live_Tracking.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="09_1.4_Quan_Ly_Lich_Hen_Dich_Vu.png" target="_blank" class="preview-box">
+          <img src="09_1.4_Quan_Ly_Lich_Hen_Dich_Vu.png" alt="1.4. Quản lý lịch hẹn dịch vụ" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.4 (page)</div>
+          <div class="title">1.4. Quản lý lịch hẹn dịch vụ</div>
+          <a href="09_1.4_Quan_Ly_Lich_Hen_Dich_Vu.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="10_1.5_Ho_So_Ca_Nhan_Va_So_Dia_Chi.png" target="_blank" class="preview-box">
+          <img src="10_1.5_Ho_So_Ca_Nhan_Va_So_Dia_Chi.png" alt="1.5. Hồ sơ cá nhân & Sổ địa chỉ" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.5 (page)</div>
+          <div class="title">1.5. Hồ sơ cá nhân & Sổ địa chỉ</div>
+          <a href="10_1.5_Ho_So_Ca_Nhan_Va_So_Dia_Chi.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="11_1.6_Danh_Sach_Dich_Vu_Yeu_Thich.png" target="_blank" class="preview-box">
+          <img src="11_1.6_Danh_Sach_Dich_Vu_Yeu_Thich.png" alt="1.6. Danh sách Dịch vụ yêu thích" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.6 (page)</div>
+          <div class="title">1.6. Danh sách Dịch vụ yêu thích</div>
+          <a href="11_1.6_Danh_Sach_Dich_Vu_Yeu_Thich.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="12_1.7_Ho_So_Cong_Khai_Cua_Tho.png" target="_blank" class="preview-box">
+          <img src="12_1.7_Ho_So_Cong_Khai_Cua_Tho.png" alt="1.7. Hồ sơ công khai của Thợ (Drawer)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.7 (drawer)</div>
+          <div class="title">1.7. Hồ sơ công khai của Thợ (Drawer)</div>
+          <a href="12_1.7_Ho_So_Cong_Khai_Cua_Tho.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="13_1.8_Cong_Thanh_Toan_VietQR.png" target="_blank" class="preview-box">
+          <img src="13_1.8_Cong_Thanh_Toan_VietQR.png" alt="1.8. Cổng Thanh toán QR Chuyển khoản (VietQR)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.8 (page)</div>
+          <div class="title">1.8. Cổng Thanh toán QR Chuyển khoản (VietQR)</div>
+          <a href="13_1.8_Cong_Thanh_Toan_VietQR.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="14_1.9_Danh_Gia_Va_Cham_Diem_Tho.png" target="_blank" class="preview-box">
+          <img src="14_1.9_Danh_Gia_Va_Cham_Diem_Tho.png" alt="1.9. Đánh giá & Chấm điểm Thợ (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.9 (modal)</div>
+          <div class="title">1.9. Đánh giá & Chấm điểm Thợ (Modal)</div>
+          <a href="14_1.9_Danh_Gia_Va_Cham_Diem_Tho.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="15_1.10_Xac_Nhan_Huy_Lich_Hen.png" target="_blank" class="preview-box">
+          <img src="15_1.10_Xac_Nhan_Huy_Lich_Hen.png" alt="1.10. Xác nhận Hủy lịch hẹn (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.10 (modal)</div>
+          <div class="title">1.10. Xác nhận Hủy lịch hẹn (Modal)</div>
+          <a href="15_1.10_Xac_Nhan_Huy_Lich_Hen.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="16_1.11_Trung_Tam_Ho_Tro_Khach_Hang.png" target="_blank" class="preview-box">
+          <img src="16_1.11_Trung_Tam_Ho_Tro_Khach_Hang.png" alt="1.11. Trung tâm Hỗ trợ & Khiếu nại (Drawer)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Khách hàng · Màn hình 1.11 (drawer)</div>
+          <div class="title">1.11. Trung tâm Hỗ trợ & Khiếu nại (Drawer)</div>
+          <a href="16_1.11_Trung_Tam_Ho_Tro_Khach_Hang.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="17_2.1_San_Nhan_Viec_Lam_Job_Board.png" target="_blank" class="preview-box">
+          <img src="17_2.1_San_Nhan_Viec_Lam_Job_Board.png" alt="2.1. Sàn nhận việc làm (Job Board)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.1 (page)</div>
+          <div class="title">2.1. Sàn nhận việc làm (Job Board)</div>
+          <a href="17_2.1_San_Nhan_Viec_Lam_Job_Board.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="18_2.2_Ca_Lam_Viec_Hien_Tai_Live_Timer.png" target="_blank" class="preview-box">
+          <img src="18_2.2_Ca_Lam_Viec_Hien_Tai_Live_Timer.png" alt="2.2. Ca làm việc hiện tại (Live Timer)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.2 (page)</div>
+          <div class="title">2.2. Ca làm việc hiện tại (Live Timer)</div>
+          <a href="18_2.2_Ca_Lam_Viec_Hien_Tai_Live_Timer.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="19_2.3_Vi_Thu_Nhap_Va_Lich_Ca.png" target="_blank" class="preview-box">
+          <img src="19_2.3_Vi_Thu_Nhap_Va_Lich_Ca.png" alt="2.3. Ví Thu Nhập & Lịch Ca" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.3 (page)</div>
+          <div class="title">2.3. Ví Thu Nhập & Lịch Ca</div>
+          <a href="19_2.3_Vi_Thu_Nhap_Va_Lich_Ca.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="20_2.4_Cau_Hinh_Nang_Luc_Va_Khu_Vuc.png" target="_blank" class="preview-box">
+          <img src="20_2.4_Cau_Hinh_Nang_Luc_Va_Khu_Vuc.png" alt="2.4. Cấu hình Năng lực & Khu vực hoạt động" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.4 (page)</div>
+          <div class="title">2.4. Cấu hình Năng lực & Khu vực hoạt động</div>
+          <a href="20_2.4_Cau_Hinh_Nang_Luc_Va_Khu_Vuc.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="21_2.6_Thiet_Lap_Lich_Co_Dinh_Xin_Nghi.png" target="_blank" class="preview-box">
+          <img src="21_2.6_Thiet_Lap_Lich_Co_Dinh_Xin_Nghi.png" alt="2.6. Thiết lập Lịch cố định & Xin nghỉ phép (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.6 (modal)</div>
+          <div class="title">2.6. Thiết lập Lịch cố định & Xin nghỉ phép (Modal)</div>
+          <a href="21_2.6_Thiet_Lap_Lich_Co_Dinh_Xin_Nghi.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="22_2.7_Ke_Khai_Chi_Phi_Vat_Tu_Phat_Sinh.png" target="_blank" class="preview-box">
+          <img src="22_2.7_Ke_Khai_Chi_Phi_Vat_Tu_Phat_Sinh.png" alt="2.7. Kê khai Chi phí vật tư phát sinh (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.7 (modal)</div>
+          <div class="title">2.7. Kê khai Chi phí vật tư phát sinh (Modal)</div>
+          <a href="22_2.7_Ke_Khai_Chi_Phi_Vat_Tu_Phat_Sinh.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="23_2.8_Tu_Choi_Don_Va_Huy_Ca.png" target="_blank" class="preview-box">
+          <img src="23_2.8_Tu_Choi_Don_Va_Huy_Ca.png" alt="2.8. Từ chối đơn & Hủy ca làm việc (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.8 (modal)</div>
+          <div class="title">2.8. Từ chối đơn & Hủy ca làm việc (Modal)</div>
+          <a href="23_2.8_Tu_Choi_Don_Va_Huy_Ca.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="24_2.9_Bao_Cao_Su_Co_Doi_Tac.png" target="_blank" class="preview-box">
+          <img src="24_2.9_Bao_Cao_Su_Co_Doi_Tac.png" alt="2.9. Báo cáo Sự cố Đối tác (Drawer)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Đối tác Thợ · Màn hình 2.9 (drawer)</div>
+          <div class="title">2.9. Báo cáo Sự cố Đối tác (Drawer)</div>
+          <a href="24_2.9_Bao_Cao_Su_Co_Doi_Tac.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="25_3.1_Admin_Dashboard_Tong_Quan.png" target="_blank" class="preview-box">
+          <img src="25_3.1_Admin_Dashboard_Tong_Quan.png" alt="3.1. Dashboard Tổng quan & Điều phối" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.1 (page)</div>
+          <div class="title">3.1. Dashboard Tổng quan & Điều phối</div>
+          <a href="25_3.1_Admin_Dashboard_Tong_Quan.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="26_3.2_Admin_Quan_Ly_Danh_Muc_Bieu_Gia.png" target="_blank" class="preview-box">
+          <img src="26_3.2_Admin_Quan_Ly_Danh_Muc_Bieu_Gia.png" alt="3.2. Quản lý Danh mục & Cấu hình Biểu giá" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.2 (page)</div>
+          <div class="title">3.2. Quản lý Danh mục & Cấu hình Biểu giá</div>
+          <a href="26_3.2_Admin_Quan_Ly_Danh_Muc_Bieu_Gia.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="27_3.3_Admin_Xet_Duyet_Ho_So_Tho_KYC.png" target="_blank" class="preview-box">
+          <img src="27_3.3_Admin_Xet_Duyet_Ho_So_Tho_KYC.png" alt="3.3. Xét duyệt Hồ sơ Đối tác (KYC)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.3 (page)</div>
+          <div class="title">3.3. Xét duyệt Hồ sơ Đối tác (KYC)</div>
+          <a href="27_3.3_Admin_Xet_Duyet_Ho_So_Tho_KYC.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="28_3.4_Admin_Quan_Ly_Nguoi_Dung_Khieu_Nai.png" target="_blank" class="preview-box">
+          <img src="28_3.4_Admin_Quan_Ly_Nguoi_Dung_Khieu_Nai.png" alt="3.4. Quản lý Người dùng & Giải quyết Khiếu nại" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.4 (page)</div>
+          <div class="title">3.4. Quản lý Người dùng & Giải quyết Khiếu nại</div>
+          <a href="28_3.4_Admin_Quan_Ly_Nguoi_Dung_Khieu_Nai.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="29_3.5_Admin_Chi_Tiet_Don_Hang_Kiem_Toan.png" target="_blank" class="preview-box">
+          <img src="29_3.5_Admin_Chi_Tiet_Don_Hang_Kiem_Toan.png" alt="3.5. Tra cứu Chi tiết Đơn & Kiểm toán (Drawer)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.5 (drawer)</div>
+          <div class="title">3.5. Tra cứu Chi tiết Đơn & Kiểm toán (Drawer)</div>
+          <a href="29_3.5_Admin_Chi_Tiet_Don_Hang_Kiem_Toan.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="30_3.6_Admin_Them_Danh_Muc_Moi.png" target="_blank" class="preview-box">
+          <img src="30_3.6_Admin_Them_Danh_Muc_Moi.png" alt="3.6. Thêm Danh mục Dịch vụ mới (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.6 (modal)</div>
+          <div class="title">3.6. Thêm Danh mục Dịch vụ mới (Modal)</div>
+          <a href="30_3.6_Admin_Them_Danh_Muc_Moi.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="31_3.7_Admin_Them_Sua_Dich_Vu.png" target="_blank" class="preview-box">
+          <img src="31_3.7_Admin_Them_Sua_Dich_Vu.png" alt="3.7. Thêm & Chỉnh sửa Dịch vụ (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.7 (modal)</div>
+          <div class="title">3.7. Thêm & Chỉnh sửa Dịch vụ (Modal)</div>
+          <a href="31_3.7_Admin_Them_Sua_Dich_Vu.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="32_3.8_Admin_Chi_Tiet_Tho_Xet_Duyet.png" target="_blank" class="preview-box">
+          <img src="32_3.8_Admin_Chi_Tiet_Tho_Xet_Duyet.png" alt="3.8. Chi tiết Đối tác Thợ & Xét duyệt (Modal)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.8 (modal)</div>
+          <div class="title">3.8. Chi tiết Đối tác Thợ & Xét duyệt (Modal)</div>
+          <a href="32_3.8_Admin_Chi_Tiet_Tho_Xet_Duyet.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="33_3.9_Admin_Xu_Ly_Phieu_Ho_Tro.png" target="_blank" class="preview-box">
+          <img src="33_3.9_Admin_Xu_Ly_Phieu_Ho_Tro.png" alt="3.9. Xử lý & Cập nhật Phiếu hỗ trợ (Drawer)" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Quản trị Admin · Màn hình 3.9 (drawer)</div>
+          <div class="title">3.9. Xử lý & Cập nhật Phiếu hỗ trợ (Drawer)</div>
+          <a href="33_3.9_Admin_Xu_Ly_Phieu_Ho_Tro.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="34_Bieu_Gia_Niem_Yet_Dich_Vu.png" target="_blank" class="preview-box">
+          <img src="34_Bieu_Gia_Niem_Yet_Dich_Vu.png" alt="Biểu giá niêm yết Dịch vụ Gia Đình Xanh" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Dùng chung · Màn hình CATALOG (modal)</div>
+          <div class="title">Biểu giá niêm yết Dịch vụ Gia Đình Xanh</div>
+          <a href="34_Bieu_Gia_Niem_Yet_Dich_Vu.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+      <div class="item">
+        <a href="35_Trang_Thai_Backend_Supabase.png" target="_blank" class="preview-box">
+          <img src="35_Trang_Thai_Backend_Supabase.png" alt="Bảng trạng thái kết nối Backend & Database" loading="lazy">
+        </a>
+        <div class="info">
+          <div class="meta">Dùng chung · Màn hình SUPABASE_STATUS (modal)</div>
+          <div class="title">Bảng trạng thái kết nối Backend & Database</div>
+          <a href="35_Trang_Thai_Backend_Supabase.png" target="_blank" class="btn-view">🔍 Xem ảnh gốc (Retina 2x)</a>
+        </div>
+      </div>
+    
+  </div>
+</body>
+</html>
