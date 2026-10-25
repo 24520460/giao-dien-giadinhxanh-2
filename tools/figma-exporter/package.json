@@ -1,0 +1,17 @@
+{
+  "name": "gdx-figma-exporter",
+  "version": "1.0.0",
+  "description": "Bộ công cụ tự động hóa xuất toàn bộ 34 màn hình của dự án Gia Đình Xanh sang Figma & Penpot bằng Node.js",
+  "main": "export-all.js",
+  "scripts": {
+    "start": "node export-all.js",
+    "export": "node export-all.js",
+    "export:desktop": "node export-all.js --viewport=desktop",
+    "export:mobile": "node export-all.js --viewport=mobile",
+    "export:screenshots": "node export-all.js --screenshots-only"
+  },
+  "dependencies": {
+    "@builder.io/html-to-figma": "^0.0.3",
+    "puppeteer-core": "^24.4.0"
+  }
+}

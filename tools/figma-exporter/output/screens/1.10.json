@@ -1,0 +1,489 @@
+{
+  "layers": [
+    {
+      "type": "FRAME",
+      "width": 1440,
+      "height": 7224,
+      "x": 15210,
+      "y": 1800,
+      "children": [
+        {
+          "type": "FRAME",
+          "clipsContent": false,
+          "x": 391,
+          "y": 291.40625,
+          "width": 658,
+          "height": 72.796875,
+          "backgrounds": [],
+          "children": [
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 615,
+              "y": -0.40625,
+              "width": 43,
+              "height": 40,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "RECTANGLE",
+                  "x": 0,
+                  "y": 0,
+                  "width": 43,
+                  "height": 40,
+                  "fills": [],
+                  "topLeftRadius": 9999,
+                  "topRightRadius": 9999,
+                  "bottomRightRadius": 9999,
+                  "bottomLeftRadius": 9999,
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 16,
+                  "y": 9,
+                  "width": 11,
+                  "height": 22,
+                  "type": "TEXT",
+                  "characters": "✕",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.2901960784313726,
+                        "g": 0.3333333333333333,
+                        "b": 0.40784313725490196
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 22.4
+                  },
+                  "fontSize": 14,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "textAlignHorizontal": "CENTER",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "CENTER",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 0,
+              "y": 0,
+              "width": 489.953125,
+              "height": 56.796875,
+              "backgrounds": [],
+              "children": [
+                {
+                  "x": 0,
+                  "y": -0.40625,
+                  "width": 322,
+                  "height": 32,
+                  "type": "TEXT",
+                  "characters": "1.10. Xác nhận Hủy lịch hẹn #1043",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.10588235294117647,
+                        "g": 0.2627450980392157,
+                        "b": 0.19607843137254902
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "letterSpacing": {
+                    "unit": "PIXELS",
+                    "value": 0.4
+                  },
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 32
+                  },
+                  "fontSize": 20,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 0,
+                  "y": 31.59375,
+                  "width": 490,
+                  "height": 25,
+                  "type": "TEXT",
+                  "characters": "Ghi lý do vào booking_status_history và chuyển status = 'Đã hủy'",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.2901960784313726,
+                        "g": 0.3333333333333333,
+                        "b": 0.40784313725490196
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 24.8
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            }
+          ],
+          "data": {
+            "heightType": "fixed",
+            "widthType": "fixed"
+          },
+          "constraints": {
+            "horizontal": "SCALE",
+            "vertical": "MIN"
+          }
+        },
+        {
+          "type": "FRAME",
+          "clipsContent": false,
+          "x": 391,
+          "y": 384.203125,
+          "width": 658,
+          "height": 224.375,
+          "backgrounds": [],
+          "children": [
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 0,
+              "y": 0,
+              "width": 658,
+              "height": 134.375,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "RECTANGLE",
+                  "x": 0,
+                  "y": 31.796875,
+                  "width": 658,
+                  "height": 103,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.9725490196078431,
+                        "g": 0.9764705882352941,
+                        "b": 0.9803921568627451
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "strokes": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.8980392156862745,
+                        "b": 0.9411764705882353,
+                        "g": 0.9137254901960784
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "strokeWeight": 1,
+                  "topLeftRadius": 12,
+                  "topRightRadius": 12,
+                  "bottomRightRadius": 12,
+                  "bottomLeftRadius": 12,
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 0,
+                  "y": -0.203125,
+                  "width": 133,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "Lý do hủy lịch hẹn",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.12156862745098039,
+                        "g": 0.1411764705882353,
+                        "b": 0.18823529411764706
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 0,
+              "y": 158.375,
+              "width": 658,
+              "height": 66,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "FRAME",
+                  "clipsContent": false,
+                  "x": 261,
+                  "y": 20.421875,
+                  "width": 152,
+                  "height": 46,
+                  "backgrounds": [],
+                  "children": [
+                    {
+                      "type": "RECTANGLE",
+                      "x": 0,
+                      "y": 0,
+                      "width": 152,
+                      "height": 46,
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": {
+                            "r": 0.9450980392156862,
+                            "g": 0.9529411764705882,
+                            "b": 0.9607843137254902
+                          },
+                          "opacity": 1
+                        }
+                      ],
+                      "topLeftRadius": 9999,
+                      "topRightRadius": 9999,
+                      "bottomRightRadius": 9999,
+                      "bottomLeftRadius": 9999,
+                      "constraints": {
+                        "horizontal": "SCALE",
+                        "vertical": "MIN"
+                      }
+                    },
+                    {
+                      "x": 22,
+                      "y": 9,
+                      "width": 108,
+                      "height": 26,
+                      "type": "TEXT",
+                      "characters": "Giữ lại lịch hẹn",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": {
+                            "r": 0.12156862745098039,
+                            "g": 0.1411764705882353,
+                            "b": 0.18823529411764706
+                          },
+                          "opacity": 1
+                        }
+                      ],
+                      "lineHeight": {
+                        "unit": "PIXELS",
+                        "value": 25.6
+                      },
+                      "fontSize": 16,
+                      "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                      "textAlignHorizontal": "CENTER",
+                      "data": {
+                        "heightType": "fixed",
+                        "widthType": "fixed"
+                      },
+                      "constraints": {
+                        "horizontal": "CENTER",
+                        "vertical": "CENTER"
+                      }
+                    }
+                  ],
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "MAX",
+                    "vertical": "CENTER"
+                  }
+                },
+                {
+                  "type": "FRAME",
+                  "clipsContent": false,
+                  "x": 425,
+                  "y": 20.421875,
+                  "width": 233,
+                  "height": 46,
+                  "backgrounds": [],
+                  "children": [
+                    {
+                      "type": "RECTANGLE",
+                      "x": 0,
+                      "y": 0,
+                      "width": 233,
+                      "height": 46,
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": {
+                            "r": 0.996078431372549,
+                            "g": 0.8862745098039215,
+                            "b": 0.8862745098039215
+                          },
+                          "opacity": 1
+                        }
+                      ],
+                      "topLeftRadius": 9999,
+                      "topRightRadius": 9999,
+                      "bottomRightRadius": 9999,
+                      "bottomLeftRadius": 9999,
+                      "constraints": {
+                        "horizontal": "SCALE",
+                        "vertical": "MIN"
+                      }
+                    },
+                    {
+                      "x": 22,
+                      "y": 9,
+                      "width": 189,
+                      "height": 26,
+                      "type": "TEXT",
+                      "characters": "Xác nhận hủy đơn #1043",
+                      "fills": [
+                        {
+                          "type": "SOLID",
+                          "color": {
+                            "r": 0.6,
+                            "g": 0.10588235294117647,
+                            "b": 0.10588235294117647
+                          },
+                          "opacity": 1
+                        }
+                      ],
+                      "lineHeight": {
+                        "unit": "PIXELS",
+                        "value": 25.6
+                      },
+                      "fontSize": 16,
+                      "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                      "textAlignHorizontal": "CENTER",
+                      "data": {
+                        "heightType": "fixed",
+                        "widthType": "fixed"
+                      },
+                      "constraints": {
+                        "horizontal": "CENTER",
+                        "vertical": "CENTER"
+                      }
+                    }
+                  ],
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "MAX",
+                    "vertical": "CENTER"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            }
+          ],
+          "data": {
+            "heightType": "fixed",
+            "widthType": "fixed"
+          },
+          "constraints": {
+            "horizontal": "SCALE",
+            "vertical": "MIN"
+          }
+        }
+      ],
+      "data": {
+        "heightType": "fixed",
+        "widthType": "fixed"
+      },
+      "constraints": {
+        "horizontal": "SCALE",
+        "vertical": "MIN"
+      },
+      "name": "[Phân hệ 1 · Khách hàng] 1.10 - 1.10. Xác nhận Hủy lịch hẹn (Modal)"
+    }
+  ]
+}

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Gia Đình Xanh — Figma & Penpot Design System Catalog</title>
+  <style>
+    :root {
+      --bg: #F8F9FA;
+      --card-bg: #FFFFFF;
+      --text: #1F2937;
+      --primary: #1B4332;
+      --accent: #E07A5F;
+      --border: #E5E7EB;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 32px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .header {
+      max-width: 1400px;
+      margin: 0 auto 32px;
+      background: var(--card-bg);
+      padding: 24px 32px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 {
+      margin: 0 0 8px 0;
+      font-size: 24px;
+      color: var(--primary);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #E8F5E9;
+      color: #2E7D32;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+    }
+    .btn {
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      background: #FFF;
+      color: var(--text);
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #FFF;
+      border-color: var(--primary);
+    }
+    .grid {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    }
+    .card-img-wrapper {
+      width: 100%;
+      height: 200px;
+      background: #F3F4F6;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-img-wrapper img {
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }
+    .card-body {
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-id {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      line-height: 1.4;
+    }
+    .card-footer {
+      margin-top: auto;
+      display: flex;
+      gap: 8px;
+    }
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+      flex: 1;
+      text-align: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Gia Đình Xanh — UI Design Catalog</h1>
+      <p style="margin:0; color:#6B7280; font-size:14px;">
+        Đã xuất tự động <strong>33 màn hình</strong> sang định dạng Figma Layers và ảnh Full-Page.
+      </p>
+    </div>
+    <div class="actions">
+      <a href="figma-project-all-screens.json" download class="btn btn-primary">
+        📥 Tải File Figma Master Bundle (.json)
+      </a>
+    </div>
+  </div>
+
+  <div class="grid">
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-0_1.png" alt="0.1. Đăng nhập - Đăng ký - Khôi phục mật khẩu" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 0 · Xác thực · 0.1 (page)</div>
+          <h3 class="card-title">0.1. Đăng nhập - Đăng ký - Khôi phục mật khẩu</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-0_1.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/0.1.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-0_2.png" alt="0.2. Thiết lập hồ sơ Khách hàng (Customer Onboarding)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 0 · Xác thực · 0.2 (page)</div>
+          <h3 class="card-title">0.2. Thiết lập hồ sơ Khách hàng (Customer Onboarding)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-0_2.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/0.2.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-0_3.png" alt="0.3. Đăng ký hành nghề Thợ (Provider Onboarding)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 0 · Xác thực · 0.3 (page)</div>
+          <h3 class="card-title">0.3. Đăng ký hành nghề Thợ (Provider Onboarding)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-0_3.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/0.3.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-0_4.png" alt="0.4. Trạng thái Hồ sơ Thợ (Chờ duyệt - Bị từ chối)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 0 · Xác thực · 0.4 (page)</div>
+          <h3 class="card-title">0.4. Trạng thái Hồ sơ Thợ (Chờ duyệt - Bị từ chối)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-0_4.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/0.4.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-0_5.png" alt="0.5. Thông báo Tài khoản bị khóa (Account Suspended)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 0 · Xác thực · 0.5 (page)</div>
+          <h3 class="card-title">0.5. Thông báo Tài khoản bị khóa (Account Suspended)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-0_5.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/0.5.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_1.png" alt="1.1. Trang chủ & Khám phá dịch vụ" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.1 (page)</div>
+          <h3 class="card-title">1.1. Trang chủ & Khám phá dịch vụ</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_1.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.1.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_2.png" alt="1.2. Cấu hình dịch vụ trước khi đặt (Booking Wizard)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.2 (page)</div>
+          <h3 class="card-title">1.2. Cấu hình dịch vụ trước khi đặt (Booking Wizard)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_2.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.2.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_3.png" alt="1.3. Theo dõi đơn hàng trực tiếp (Live Tracking)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.3 (page)</div>
+          <h3 class="card-title">1.3. Theo dõi đơn hàng trực tiếp (Live Tracking)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_3.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.3.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_4.png" alt="1.4. Quản lý lịch hẹn dịch vụ" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.4 (page)</div>
+          <h3 class="card-title">1.4. Quản lý lịch hẹn dịch vụ</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_4.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.4.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_5.png" alt="1.5. Hồ sơ cá nhân & Sổ địa chỉ" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.5 (page)</div>
+          <h3 class="card-title">1.5. Hồ sơ cá nhân & Sổ địa chỉ</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_5.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.5.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_6.png" alt="1.6. Danh sách Dịch vụ yêu thích" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.6 (page)</div>
+          <h3 class="card-title">1.6. Danh sách Dịch vụ yêu thích</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_6.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.6.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_7.png" alt="1.7. Hồ sơ công khai của Thợ (Drawer)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.7 (drawer)</div>
+          <h3 class="card-title">1.7. Hồ sơ công khai của Thợ (Drawer)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_7.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.7.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_8.png" alt="1.8. Cổng Thanh toán QR Chuyển khoản (VietQR)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.8 (page)</div>
+          <h3 class="card-title">1.8. Cổng Thanh toán QR Chuyển khoản (VietQR)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_8.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.8.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_9.png" alt="1.9. Đánh giá & Chấm điểm Thợ (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.9 (modal)</div>
+          <h3 class="card-title">1.9. Đánh giá & Chấm điểm Thợ (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_9.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.9.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_10.png" alt="1.10. Xác nhận Hủy lịch hẹn (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.10 (modal)</div>
+          <h3 class="card-title">1.10. Xác nhận Hủy lịch hẹn (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_10.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.10.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-1_11.png" alt="1.11. Trung tâm Hỗ trợ & Khiếu nại (Drawer)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 1 · Khách hàng · 1.11 (drawer)</div>
+          <h3 class="card-title">1.11. Trung tâm Hỗ trợ & Khiếu nại (Drawer)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-1_11.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/1.11.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_1.png" alt="2.1. Sàn nhận việc làm (Job Board)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.1 (page)</div>
+          <h3 class="card-title">2.1. Sàn nhận việc làm (Job Board)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_1.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.1.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_2.png" alt="2.2. Ca làm việc hiện tại (Live Timer)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.2 (page)</div>
+          <h3 class="card-title">2.2. Ca làm việc hiện tại (Live Timer)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_2.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.2.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_3.png" alt="2.3. Ví Thu Nhập & Lịch Ca" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.3 (page)</div>
+          <h3 class="card-title">2.3. Ví Thu Nhập & Lịch Ca</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_3.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.3.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_4.png" alt="2.4. Cấu hình Năng lực & Khu vực hoạt động" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.4 (page)</div>
+          <h3 class="card-title">2.4. Cấu hình Năng lực & Khu vực hoạt động</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_4.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.4.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_6.png" alt="2.6. Thiết lập Lịch cố định & Nghỉ phép (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.6 (modal)</div>
+          <h3 class="card-title">2.6. Thiết lập Lịch cố định & Nghỉ phép (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_6.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.6.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_7.png" alt="2.7. Kê khai Chi phí vật tư phát sinh (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.7 (modal)</div>
+          <h3 class="card-title">2.7. Kê khai Chi phí vật tư phát sinh (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_7.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.7.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_8.png" alt="2.8. Từ chối đơn & Hủy ca làm việc (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.8 (modal)</div>
+          <h3 class="card-title">2.8. Từ chối đơn & Hủy ca làm việc (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_8.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.8.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-2_9.png" alt="2.9. Báo cáo Sự cố Đối tác (Drawer)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 2 · Thợ · 2.9 (drawer)</div>
+          <h3 class="card-title">2.9. Báo cáo Sự cố Đối tác (Drawer)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-2_9.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/2.9.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_1.png" alt="3.1. Dashboard Tổng quan & Điều phối" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.1 (page)</div>
+          <h3 class="card-title">3.1. Dashboard Tổng quan & Điều phối</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_1.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.1.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_2.png" alt="3.2. Quản lý Danh mục & Cấu hình Biểu giá" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.2 (page)</div>
+          <h3 class="card-title">3.2. Quản lý Danh mục & Cấu hình Biểu giá</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_2.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.2.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_3.png" alt="3.3. Xét duyệt Hồ sơ Đối tác (KYC)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.3 (page)</div>
+          <h3 class="card-title">3.3. Xét duyệt Hồ sơ Đối tác (KYC)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_3.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.3.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_4.png" alt="3.4. Quản lý Người dùng & Giải quyết Khiếu nại" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.4 (page)</div>
+          <h3 class="card-title">3.4. Quản lý Người dùng & Giải quyết Khiếu nại</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_4.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.4.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_5.png" alt="3.5. Tra cứu Chi tiết Đơn & Kiểm toán (Drawer)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.5 (drawer)</div>
+          <h3 class="card-title">3.5. Tra cứu Chi tiết Đơn & Kiểm toán (Drawer)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_5.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.5.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_6.png" alt="3.6. Thêm Danh mục Dịch vụ mới (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.6 (modal)</div>
+          <h3 class="card-title">3.6. Thêm Danh mục Dịch vụ mới (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_6.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.6.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_7.png" alt="3.7. Thêm & Chỉnh sửa Dịch vụ (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.7 (modal)</div>
+          <h3 class="card-title">3.7. Thêm & Chỉnh sửa Dịch vụ (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_7.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.7.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_8.png" alt="3.8. Chi tiết Đối tác Thợ & Xét duyệt (Modal)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.8 (modal)</div>
+          <h3 class="card-title">3.8. Chi tiết Đối tác Thợ & Xét duyệt (Modal)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_8.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.8.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+      <div class="card">
+        <div class="card-img-wrapper">
+          <img src="screenshots/screen-3_9.png" alt="3.9. Xử lý & Cập nhật Phiếu hỗ trợ (Drawer)" loading="lazy">
+        </div>
+        <div class="card-body">
+          <div class="card-id">Phân hệ 3 · Admin · 3.9 (drawer)</div>
+          <h3 class="card-title">3.9. Xử lý & Cập nhật Phiếu hỗ trợ (Drawer)</h3>
+          <div class="card-footer">
+            <a href="screenshots/screen-3_9.png" target="_blank" class="btn btn-sm">Xem ảnh</a>
+            <a href="screens/3.9.json" download class="btn btn-sm btn-primary">Tải Figma JSON</a>
+          </div>
+        </div>
+      </div>
+    
+  </div>
+</body>
+</html>

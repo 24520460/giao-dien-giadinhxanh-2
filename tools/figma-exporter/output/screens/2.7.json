@@ -1,0 +1,702 @@
+{
+  "layers": [
+    {
+      "type": "FRAME",
+      "width": 1440,
+      "height": 1290,
+      "x": 8450,
+      "y": 3600,
+      "children": [
+        {
+          "type": "FRAME",
+          "clipsContent": false,
+          "x": 391,
+          "y": 235,
+          "width": 658,
+          "height": 104.796875,
+          "backgrounds": [],
+          "children": [
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 615,
+              "y": 0,
+              "width": 43,
+              "height": 40,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "RECTANGLE",
+                  "x": 0,
+                  "y": 0,
+                  "width": 43,
+                  "height": 40,
+                  "fills": [],
+                  "topLeftRadius": 9999,
+                  "topRightRadius": 9999,
+                  "bottomRightRadius": 9999,
+                  "bottomLeftRadius": 9999,
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 16,
+                  "y": 9,
+                  "width": 11,
+                  "height": 22,
+                  "type": "TEXT",
+                  "characters": "✕",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.2901960784313726,
+                        "g": 0.3333333333333333,
+                        "b": 0.40784313725490196
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 22.4
+                  },
+                  "fontSize": 14,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "textAlignHorizontal": "CENTER",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "CENTER",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 0,
+              "y": 0,
+              "width": 598.5625,
+              "height": 88.796875,
+              "backgrounds": [],
+              "children": [
+                {
+                  "x": 0,
+                  "y": 3,
+                  "width": 590,
+                  "height": 57,
+                  "type": "TEXT",
+                  "characters": "2.7. Nghiệm thu & Hoàn thành Ca làm #00000000-0000-4000-8000-000000000907",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.10588235294117647,
+                        "g": 0.2627450980392157,
+                        "b": 0.19607843137254902
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "letterSpacing": {
+                    "unit": "PIXELS",
+                    "value": 0.4
+                  },
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 32
+                  },
+                  "fontSize": 20,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 0,
+                  "y": 64,
+                  "width": 525,
+                  "height": 25,
+                  "type": "TEXT",
+                  "characters": "Chuyển status = 'Hoàn thành' và ghi nhận vào booking_status_history",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.2901960784313726,
+                        "g": 0.3333333333333333,
+                        "b": 0.40784313725490196
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 24.8
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            }
+          ],
+          "data": {
+            "heightType": "fixed",
+            "widthType": "fixed"
+          },
+          "constraints": {
+            "horizontal": "SCALE",
+            "vertical": "MIN"
+          }
+        },
+        {
+          "type": "FRAME",
+          "clipsContent": false,
+          "x": 391,
+          "y": 360,
+          "width": 658,
+          "height": 215,
+          "backgrounds": [],
+          "children": [
+            {
+              "type": "RECTANGLE",
+              "x": 0,
+              "y": 0,
+              "width": 658,
+              "height": 215,
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.9725490196078431,
+                    "g": 0.9764705882352941,
+                    "b": 0.9803921568627451
+                  },
+                  "opacity": 1
+                }
+              ],
+              "topLeftRadius": 12,
+              "topRightRadius": 12,
+              "bottomRightRadius": 12,
+              "bottomLeftRadius": 12,
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 20,
+              "y": 133,
+              "width": 618,
+              "height": 64,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "RECTANGLE",
+                  "x": 0,
+                  "y": 0,
+                  "width": 618,
+                  "height": 64,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.9215686274509803,
+                        "g": 0.9490196078431372,
+                        "b": 0.9333333333333333
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "topLeftRadius": 12,
+                  "topRightRadius": 12,
+                  "bottomRightRadius": 12,
+                  "bottomLeftRadius": 12,
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 503,
+                  "y": 15,
+                  "width": 97,
+                  "height": 32,
+                  "type": "TEXT",
+                  "characters": "475.000 đ",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.10588235294117647,
+                        "g": 0.2627450980392157,
+                        "b": 0.19607843137254902
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 32
+                  },
+                  "fontSize": 20,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "CENTER"
+                  }
+                },
+                {
+                  "x": 18,
+                  "y": 18,
+                  "width": 177,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "Tổng cộng nghiệm thu",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.10588235294117647,
+                        "g": 0.2627450980392157,
+                        "b": 0.19607843137254902
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "CENTER"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 20,
+              "y": 17.796875,
+              "width": 618,
+              "height": 41.59375,
+              "backgrounds": [],
+              "children": [
+                {
+                  "x": 537,
+                  "y": 7.203125,
+                  "width": 81,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "425.000 đ",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.12156862745098039,
+                        "g": 0.1411764705882353,
+                        "b": 0.18823529411764706
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 0,
+                  "y": 7.203125,
+                  "width": 135,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "Tiền công dịch vụ",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.12156862745098039,
+                        "g": 0.1411764705882353,
+                        "b": 0.18823529411764706
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 20,
+              "y": 67.390625,
+              "width": 618,
+              "height": 41.59375,
+              "backgrounds": [],
+              "children": [
+                {
+                  "x": 548,
+                  "y": 7.609375,
+                  "width": 70,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "50.000 đ",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.12156862745098039,
+                        "g": 0.1411764705882353,
+                        "b": 0.18823529411764706
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 0,
+                  "y": 7.609375,
+                  "width": 118,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "Vật tư phát sinh",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.12156862745098039,
+                        "g": 0.1411764705882353,
+                        "b": 0.18823529411764706
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "SCALE",
+                "vertical": "MIN"
+              }
+            }
+          ],
+          "data": {
+            "heightType": "fixed",
+            "widthType": "fixed"
+          },
+          "constraints": {
+            "horizontal": "SCALE",
+            "vertical": "MIN"
+          }
+        },
+        {
+          "type": "FRAME",
+          "clipsContent": false,
+          "x": 391,
+          "y": 598.984375,
+          "width": 658,
+          "height": 66,
+          "backgrounds": [],
+          "children": [
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 270,
+              "y": 20.015625,
+              "width": 106,
+              "height": 46,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "RECTANGLE",
+                  "x": 0,
+                  "y": 0,
+                  "width": 106,
+                  "height": 46,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.9450980392156862,
+                        "g": 0.9529411764705882,
+                        "b": 0.9607843137254902
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "topLeftRadius": 9999,
+                  "topRightRadius": 9999,
+                  "bottomRightRadius": 9999,
+                  "bottomLeftRadius": 9999,
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 22,
+                  "y": 10,
+                  "width": 62,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "Quay lại",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.12156862745098039,
+                        "g": 0.1411764705882353,
+                        "b": 0.18823529411764706
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "textAlignHorizontal": "CENTER",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "CENTER",
+                    "vertical": "CENTER"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "MAX",
+                "vertical": "CENTER"
+              }
+            },
+            {
+              "type": "FRAME",
+              "clipsContent": false,
+              "x": 388,
+              "y": 20.015625,
+              "width": 270,
+              "height": 46,
+              "backgrounds": [],
+              "children": [
+                {
+                  "type": "RECTANGLE",
+                  "x": 0,
+                  "y": 0,
+                  "width": 270,
+                  "height": 46,
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 0.10588235294117647,
+                        "g": 0.2627450980392157,
+                        "b": 0.19607843137254902
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "topLeftRadius": 9999,
+                  "topRightRadius": 9999,
+                  "bottomRightRadius": 9999,
+                  "bottomLeftRadius": 9999,
+                  "constraints": {
+                    "horizontal": "SCALE",
+                    "vertical": "MIN"
+                  }
+                },
+                {
+                  "x": 22,
+                  "y": 10,
+                  "width": 226,
+                  "height": 26,
+                  "type": "TEXT",
+                  "characters": "Xác nhận hoàn thành ca làm →",
+                  "fills": [
+                    {
+                      "type": "SOLID",
+                      "color": {
+                        "r": 1,
+                        "g": 1,
+                        "b": 1
+                      },
+                      "opacity": 1
+                    }
+                  ],
+                  "lineHeight": {
+                    "unit": "PIXELS",
+                    "value": 25.6
+                  },
+                  "fontSize": 16,
+                  "fontFamily": "\"Plus Jakarta Sans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+                  "textAlignHorizontal": "CENTER",
+                  "data": {
+                    "heightType": "fixed",
+                    "widthType": "fixed"
+                  },
+                  "constraints": {
+                    "horizontal": "CENTER",
+                    "vertical": "CENTER"
+                  }
+                }
+              ],
+              "data": {
+                "heightType": "fixed",
+                "widthType": "fixed"
+              },
+              "constraints": {
+                "horizontal": "MAX",
+                "vertical": "CENTER"
+              }
+            }
+          ],
+          "data": {
+            "heightType": "fixed",
+            "widthType": "fixed"
+          },
+          "constraints": {
+            "horizontal": "SCALE",
+            "vertical": "MIN"
+          }
+        }
+      ],
+      "data": {
+        "heightType": "fixed",
+        "widthType": "fixed"
+      },
+      "constraints": {
+        "horizontal": "SCALE",
+        "vertical": "MIN"
+      },
+      "name": "[Phân hệ 2 · Thợ] 2.7 - 2.7. Kê khai Chi phí vật tư phát sinh (Modal)"
+    }
+  ]
+}
