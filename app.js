@@ -13,6 +13,12 @@
  * =====================================================================
  */
 
+if (typeof window === "undefined") {
+  // Môi trường Node.js / Vercel Serverless Function:
+  // Nếu Vercel nhận diện nhầm app.js làm backend entrypoint, tự động ủy nhiệm sang server.js
+  module.exports = require("./server.js");
+} else {
+
 window.GDXApp = (() => {
   const urlParams = new URLSearchParams(window.location.search);
   const initialModeParam = urlParams.get('mode') || urlParams.get('env');
@@ -8161,3 +8167,6 @@ window.GDXApp = (() => {
     RPC
   };
 })();
+
+}
+
