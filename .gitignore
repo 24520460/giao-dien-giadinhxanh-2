@@ -1,27 +1,69 @@
-# Environment variables & local credentials
-.env.local
+# ==============================================================================
+# BẢO MẬT & MÔI TRƯỜNG (Environment & Credentials)
+# ==============================================================================
 .env
-.env.*.local
+.env*.local
+.env.development
+.env.test
+.env.production
+.env.backup
+*.pem
 
-# Node.js dependencies
+# ==============================================================================
+# DEPENDENCIES (Thư viện cài đặt)
+# ==============================================================================
 node_modules/
+.pnpm-store/
+.npm/
+
+# ==============================================================================
+# RUNTIME DATA & DATABASE CỤC BỘ
+# ==============================================================================
+backend/data/local-db.json
+backend/data/*.backup.json
+*.sqlite
+*.sqlite3
+
+# ==============================================================================
+# LOGS & TEMPORARY FILES
+# ==============================================================================
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Local Persistent Database store (runtime data)
-backend/data/local-db.json
-
-# Test outputs and temporary scratches
+pnpm-debug.log*
+lerna-debug.log*
 scratch/
 .system_generated/
 *.tmp
+*.temp
 
-# OS & IDE files
+# ==============================================================================
+# BUILD & COVERAGE ARTIFACTS
+# ==============================================================================
+dist/
+build/
+out/
+.next/
+.cache/
+coverage/
+.nyc_output/
+
+# ==============================================================================
+# UI TEST INSPECTION / SCREENSHOTS ARTIFACTS
+# ==============================================================================
+.taste-skill/inspect/
+
+# ==============================================================================
+# OS & IDE (Hệ điều hành & Trình soạn thảo)
+# ==============================================================================
 .DS_Store
 Thumbs.db
+ehthumbs.db
+desktop.ini
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.suo
 *.ntvs*
 *.njsproj
