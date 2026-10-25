@@ -1,0 +1,76 @@
+@startuml SD-04-availability-conflict
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-04: Cấu hình Lịch rảnh, Ngoại lệ & Kiểm tra Xung đột\n(Gộp FR-AVAIL-01, FR-AVAIL-02 & FR-AVAIL-04)
+
+actor "Provider\n(Đối tác Thợ)" as Prov #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+
+Prov -> UI: 1. Truy cập Quản lý lịch rảnh & Ngoại lệ:\nChọn ngày nghỉ ngoại lệ (exception_date) hoặc cập nhật khung giờ rảnh (day_of_week, start_time, end_time)
+activate Prov
+activate UI
+
+UI -> UI: 2. Validate form client sơ bộ:\nKiểm tra start_time < end_time, exception_date >= CURRENT_DATE
+
+alt Trường hợp A: Đăng ký Ngày nghỉ ngoại lệ (FR-AVAIL-02)
+    UI -> API: 3a. POST /api/availability/exceptions\n{ exception_date, reason }
+    activate API
+    
+    note over API, DB
+        <b>FR-AVAIL-04: Kiểm tra xung đột lịch với các Booking đã chốt (confirmed)</b>
+        Không được phép đặt ngày nghỉ nếu ngày đó đã có lịch hẹn đã chốt với khách hàng.
+    end note
+    
+    API -> DB: 4a. SELECT booking_id, booking_time, booking_status\nFROM bookings\nWHERE provider_id = :provider_id\n  AND booking_time::date = :exception_date\n  AND booking_status = 'confirmed'
+    activate DB
+    DB --> API: 5a. Trả về danh sách đơn đã chốt trong ngày (nếu có)
+    
+    alt Tồn tại Booking đã chốt (booking_status = 'confirmed')
+        API --> UI: 6a. HTTP 409 Conflict\n{ ok: false, code: "HAS_ACTIVE_BOOKINGS",\n  error: "Không thể chọn ngày nghỉ vì bạn đang có lịch hẹn đã xác nhận (confirmed) với khách hàng." }
+        UI --> Prov: 7a. Cảnh báo lỗi xung đột lịch hẹn: Yêu cầu xử lý dời lịch/hoàn tất đơn trước khi đăng ký nghỉ
+    else Không có xung đột lịch
+        API -> DB: 8a. INSERT INTO availability_exceptions (provider_id, exception_date, reason)\nVALUES (:provider_id, :exception_date, :reason)
+        DB --> API: 9a. Thêm ngoại lệ thành công
+        deactivate DB
+        
+        API --> UI: 10a. HTTP 201 Created\n{ ok: true, message: "Đăng ký ngày nghỉ ngoại lệ thành công." }
+        UI --> Prov: 11a. Cập nhật giao diện Lịch, đánh dấu ngày nghỉ (màu xám/đỏ)
+    end
+
+else Trường hợp B: Cập nhật Khung giờ làm việc hàng tuần (FR-AVAIL-01)
+    UI -> API: 3b. PUT /api/availability/schedules\n{ schedules: [ { day_of_week: 1, start_time: "08:00", end_time: "17:00", is_active: true } ] }
+    
+    API -> API: 4b. Kiểm tra logic khoảng giờ:\nBảo đảm start_time < end_time và không bị chồng lấn (overlap)
+    
+    API -> DB: 5b. SELECT b.booking_id, b.booking_time\nFROM bookings b\nWHERE b.provider_id = :provider_id\n  AND b.booking_status = 'confirmed'\n  AND b.booking_time >= CURRENT_TIMESTAMP\n  AND EXTRACT(DOW FROM b.booking_time) = :day_of_week\n  AND (b.booking_time::time < :start_time OR b.booking_time::time > :end_time)
+    activate DB
+    DB --> API: 6b. Trả về danh sách đơn đã chốt rơi ra ngoài khung giờ mới
+    
+    alt Tồn tại Booking đã xác nhận nằm ngoài khung giờ mới
+        API --> UI: 7b. HTTP 409 Conflict\n{ ok: false, error: "Khung giờ mới làm rớt các đơn đã xác nhận (confirmed). Vui lòng điều chỉnh lại." }
+        UI --> Prov: 8b. Hiển thị thông báo xung đột với các đơn hàng sắp tới
+    else Không có xung đột
+        API -> DB: 9b. Bắt đầu Transaction cập nhật lịch:\nUPSERT INTO availability_schedules (provider_id, day_of_week, start_time, end_time, is_active)\nVALUES (:provider_id, :day_of_week, :start_time, :end_time, :is_active)
+        DB --> API: 10b. Cập nhật thành công các bản ghi lịch rảnh
+        deactivate DB
+        
+        API --> UI: 11b. HTTP 200 OK\n{ ok: true, message: "Cập nhật khung giờ làm việc thành công." }
+        deactivate API
+        UI --> Prov: 12b. Hiển thị thông báo thành công và cập nhật bảng giờ làm việc
+    end
+end
+deactivate UI
+deactivate Prov
+
+@enduml

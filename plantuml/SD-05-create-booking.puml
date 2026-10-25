@@ -1,0 +1,110 @@
+@startuml SD-05-create-booking
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-05: Tạo yêu cầu Booking (Kiểm tra điều kiện, Chống trùng lịch & Lưu Snapshot)\n(Gộp FR-CUST-03, FR-AVAIL-03, FR-AVAIL-04, FR-BOOK-01, FR-BOOK-02, FR-BOOK-07 & FR-NOT-001)
+
+actor "Customer\n(Khách hàng)" as Cust #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+participant "Notification Service\n(In-app / Realtime)" as Notif #E0F2FE
+
+Cust -> UI: 1. Chọn Dịch vụ, Thợ, Thời gian thực hiện (booking_time),\nchọn Địa chỉ mặc định (hoặc nhập địa chỉ mới) và Ghi chú
+activate Cust
+activate UI
+
+note over UI
+    <b>FR-CUST-03: Sử dụng địa chỉ giao dịch mặc định</b>
+    Tự động điền số nhà, đường, phường/xã đã lưu từ customer_addresses
+end note
+
+UI -> API: 2. POST /api/bookings\n{ service_id, provider_id, booking_time, address_detail, ward_id, notes }
+activate API
+
+API -> API: 3. Kiểm tra tính hợp lệ sơ bộ:\nbooking_time > CURRENT_TIMESTAMP + 2 hours (bắt buộc đặt trước tối thiểu 2h)
+
+group Database Transaction: Kiểm tra & Khởi tạo Đơn Đặt lịch
+    API -> DB: 4. Bắt đầu Transaction (BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE)
+    activate DB
+    
+    note over API, DB
+        <b>FR-BOOK-02: Lấy giá chuẩn do Admin cấu hình & Kiểm tra Thợ</b>
+        Hệ thống định giá tập trung: Giá dịch vụ được lấy trực tiếp từ bảng services (Admin quản trị).
+        Thợ phải ở trạng thái đã duyệt (verified) và đang hoạt động (is_active = true).
+    end note
+    
+    API -> DB: 5. SELECT s.service_id, s.base_price, s.pricing_type, pp.provider_id, u.is_active\nFROM services s\nJOIN provider_services ps ON s.service_id = ps.service_id\nJOIN provider_profiles pp ON ps.provider_id = pp.provider_id\nJOIN users u ON pp.user_id = u.user_id\nWHERE s.service_id = :service_id AND pp.provider_id = :provider_id\n  AND s.is_active = true AND pp.verification_status = 'verified' AND u.is_active = true
+    DB --> API: 6. Trả về thông tin dịch vụ, thợ và giá gốc (base_price)
+    
+    alt Dịch vụ hoặc Thợ không hợp lệ / ngưng hoạt động
+        API -> DB: 7a. ROLLBACK
+        API --> UI: 7b. HTTP 400 Bad Request\n{ ok: false, error: "Dịch vụ hoặc thợ hiện không khả dụng." }
+        UI --> Cust: 7c. Hiển thị thông báo không thể đặt lịch
+    else Dịch vụ & Thợ hợp lệ
+        note over API, DB
+            <b>FR-AVAIL-03 & FR-AVAIL-04: Kiểm tra Slot rảnh & Chống Double-booking</b>
+            1. Kiểm tra ngày đặt có rơi vào ngày nghỉ ngoại lệ (availability_exceptions) không.
+            2. Kiểm tra giờ đặt có nằm trong khung giờ làm việc (availability_schedules) không.
+            3. Kiểm tra xung đột với đơn đã tồn tại (pending hoặc confirmed) trong phạm vi +- 2 giờ.
+        end note
+        
+        API -> DB: 8. SELECT 1 FROM availability_exceptions\nWHERE provider_id = :provider_id AND exception_date = :booking_time::date
+        DB --> API: 9. Kết quả kiểm tra ngoại lệ
+        
+        API -> DB: 10. SELECT booking_id FROM bookings\nWHERE provider_id = :provider_id\n  AND booking_status IN ('pending', 'confirmed')\n  AND booking_time BETWEEN (:booking_time - interval '2 hours') AND (:booking_time + interval '2 hours')\nFOR UPDATE
+        DB --> API: 11. Danh sách booking xung đột (nếu có)
+        
+        alt Trùng ngày nghỉ ngoại lệ HOẶC Xung đột lịch hẹn khác
+            API -> DB: 12a. ROLLBACK
+            API --> UI: 12b. HTTP 409 Conflict\n{ ok: false, code: "SLOT_UNAVAILABLE",\n  error: "Khung giờ này thợ đã bận hoặc có đơn hẹn khác. Vui lòng chọn giờ khác." }
+            UI --> Cust: 12c. Hiển thị thông báo slot bị trùng, gợi ý chọn giờ khác
+        else Khung giờ hoàn toàn khả dụng
+            note over API, DB
+                <b>FR-BOOK-01 & FR-BOOK-02: Tạo Booking & Lưu Snapshot</b>
+                Snapshot toàn bộ: service_title, provider_name, address_detail, ward_id,
+                total_amount = base_price, trạng thái khởi tạo: pending, payment_status: unpaid.
+            end note
+            
+            API -> DB: 13. INSERT INTO bookings (\n  customer_id, provider_id, service_id, booking_time,\n  booking_status, payment_status, total_amount,\n  address_detail, ward_id, notes\n) VALUES (\n  :customer_id, :provider_id, :service_id, :booking_time,\n  'pending', 'unpaid', :base_price,\n  :address_detail, :ward_id, :notes\n) RETURNING booking_id, created_at
+            DB --> API: 14. Booking row created (booking_id = :new_booking_id)
+            
+            note over API, DB
+                <b>FR-BOOK-07: Ghi nhận lịch sử trạng thái ban đầu</b>
+            end note
+            
+            API -> DB: 15. INSERT INTO booking_status_history (\n  booking_id, from_status, to_status, changed_by, notes\n) VALUES (\n  :new_booking_id, NULL, 'pending', :customer_id, 'Khách hàng tạo yêu cầu đặt lịch'\n)
+            DB --> API: 16. History record created
+            
+            API -> DB: 17. COMMIT TRANSACTION
+            DB --> API: 18. Transaction Committed successfully
+            deactivate DB
+            
+            note over API, Notif
+                <b>FR-NOT-001: Thông báo tức thời đến Thợ (Async)</b>
+            end note
+            
+            API -> Notif: 19. Gửi thông báo đến Thợ (In-app notification + push event)\n{ recipient_id: provider_user_id, title: "Đơn đặt mới",\n  content: "Bạn có yêu cầu đặt lịch hẹn mới cần phản hồi trong 24h.", booking_id: :new_booking_id }
+            activate Notif
+            Notif --> API: 20. Notification queued / dispatched
+            deactivate Notif
+            
+            API --> UI: 21. HTTP 201 Created\n{ ok: true, booking_id: :new_booking_id, status: 'pending', total_amount: :base_price }
+            deactivate API
+            
+            UI --> Cust: 22. Hiển thị màn hình "Đặt lịch thành công":\nHiển thị mã đơn, thời gian, số tiền và thông điệp "Đang chờ thợ xác nhận trong 24h"
+            deactivate UI
+        end
+    end
+end
+deactivate Cust
+
+@enduml

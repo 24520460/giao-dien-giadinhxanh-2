@@ -133,7 +133,19 @@ function ensureLocalDb() {
   }
   try {
     const raw = fs.readFileSync(LOCAL_DB_PATH, "utf8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    const initial = createInitialDatabase();
+    let updated = false;
+    for (const key of Object.keys(initial)) {
+      if (!parsed[key] && Array.isArray(initial[key])) {
+        parsed[key] = initial[key];
+        updated = true;
+      }
+    }
+    if (updated) {
+      fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(parsed, null, 2), "utf8");
+    }
+    return parsed;
   } catch (e) {
     const initial = createInitialDatabase();
     fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(initial, null, 2), "utf8");
@@ -175,6 +187,7 @@ function computeProviderPublicProfiles(db) {
 
 function recomputeProviderRating(db, providerId) {
   const provReviews = (db.reviews || []).filter((r) => {
+    if (r.status === "hidden") return false;
     if (r.provider_id !== undefined) return Number(r.provider_id) === Number(providerId);
     const bk = (db.bookings || []).find((b) => b.booking_id === r.booking_id);
     return bk && Number(bk.provider_id) === Number(providerId);
@@ -297,7 +310,13 @@ async function fetchBootstrapData(isProd = false) {
         "booking_status_history",
         "reviews",
         "favorites",
-        "support_tickets"
+        "support_tickets",
+        "customer_addresses",
+        "ticket_messages",
+        "notifications",
+        "audit_logs",
+        "ai_conversations",
+        "ai_messages"
       ];
       const results = await Promise.all(tables.map((t) => fetchSupabaseTable(client, t)));
       const hasError = results.find((r) => r.error);
@@ -363,7 +382,13 @@ async function fetchBootstrapData(isProd = false) {
         "booking_status_history",
         "reviews",
         "favorites",
-        "support_tickets"
+        "support_tickets",
+        "customer_addresses",
+        "ticket_messages",
+        "notifications",
+        "audit_logs",
+        "ai_conversations",
+        "ai_messages"
       ];
       const results = await Promise.all(tables.map((t) => fetchSupabaseTable(client, t)));
       const hasError = results.some((r) => r.error);
@@ -439,6 +464,132 @@ function sendJson(res, statusCode, payload) {
   res.end(JSON.stringify(payload));
 }
 
+// ---------------------------------------------------------------------
+// 3.5. CÁC HÀM TRỢ GIÚP HỆ THỐNG: THÔNG BÁO, AUDIT LOG & HẾT HẠN TỰ ĐỘNG
+// ---------------------------------------------------------------------
+async function dispatchNotification(db, { user_id, title, body, type, link, entity_id, isProd, client }) {
+  const notif = {
+    notification_id: isProd ? crypto.randomUUID() : Math.max(900, ...(db?.notifications || []).map(n => typeof n.notification_id === 'number' ? n.notification_id : 0)) + 1,
+    user_id: String(user_id),
+    title: String(title || "Thông báo"),
+    body: String(body || ""),
+    type: String(type || "system"),
+    link: link || null,
+    is_read: false,
+    created_at: new Date().toISOString()
+  };
+  if (isProd && client) {
+    try {
+      await client.from("notifications").insert([notif]);
+    } catch (e) {
+      console.warn("[dispatchNotification Prod Warning]", e.message);
+    }
+  } else if (db) {
+    if (!Array.isArray(db.notifications)) db.notifications = [];
+    db.notifications.unshift(notif);
+    saveLocalDb(db);
+  }
+  return notif;
+}
+
+async function logAudit(db, { actor_id, action, target_entity, target_id, details, isProd, client }) {
+  const logRow = {
+    log_id: isProd ? crypto.randomUUID() : Math.max(9000, ...(db?.audit_logs || []).map(a => typeof a.log_id === 'number' ? a.log_id : 0)) + 1,
+    actor_id: actor_id || "system",
+    action: String(action),
+    target_entity: String(target_entity),
+    target_id: target_id ? String(target_id) : null,
+    details: typeof details === "object" ? JSON.stringify(details) : String(details || ""),
+    created_at: new Date().toISOString()
+  };
+  if (isProd && client) {
+    try {
+      await client.from("audit_logs").insert([logRow]);
+    } catch (e) {
+      console.warn("[logAudit Prod Warning]", e.message);
+    }
+  } else if (db) {
+    if (!Array.isArray(db.audit_logs)) db.audit_logs = [];
+    db.audit_logs.unshift(logRow);
+    saveLocalDb(db);
+  }
+  return logRow;
+}
+
+async function autoExpirePendingBookings(db, isProd, client) {
+  let count = 0;
+  const cutoffTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  if (isProd && client) {
+    try {
+      const { data: expiredBks } = await client
+        .from("bookings")
+        .select("*")
+        .eq("status", "pending")
+        .lt("created_at", cutoffTime);
+      if (Array.isArray(expiredBks) && expiredBks.length > 0) {
+        for (const bk of expiredBks) {
+          await client.from("bookings").update({ status: "auto_cancelled", updated_at: new Date().toISOString() }).eq("booking_id", bk.booking_id);
+          await client.from("booking_status_history").insert([{
+            booking_id: bk.booking_id,
+            previous_status: "pending",
+            new_status: "auto_cancelled",
+            changed_by: null,
+            reason: "Hệ thống tự động hủy sau 24 giờ không có thợ nhận (FR-BOOK-007)"
+          }]);
+          const { data: cp } = await client.from("customer_profiles").select("user_id").eq("customer_id", bk.customer_id).maybeSingle();
+          if (cp && cp.user_id) {
+            await dispatchNotification(null, {
+              user_id: cp.user_id,
+              title: "Đơn đặt lịch đã hết hạn",
+              body: `Đơn #${bk.booking_id} đã tự động hủy do chưa có thợ nhận sau 24h. Quý khách vui lòng thử lại vào khung giờ khác.`,
+              type: "booking_cancelled",
+              link: "#1.3",
+              isProd: true,
+              client
+            });
+          }
+          count++;
+        }
+      }
+    } catch (e) {
+      console.warn("[autoExpire Prod Error]", e.message);
+    }
+  } else if (db && Array.isArray(db.bookings)) {
+    const expiredBks = db.bookings.filter((b) => b.status === "pending" && b.created_at && b.created_at < cutoffTime);
+    for (const bk of expiredBks) {
+      bk.status = "auto_cancelled";
+      bk.updated_at = new Date().toISOString();
+      if (!Array.isArray(db.booking_status_history)) db.booking_status_history = [];
+      const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
+      db.booking_status_history.unshift({
+        history_id: nextHistoryId,
+        booking_id: bk.booking_id,
+        previous_status: "pending",
+        new_status: "auto_cancelled",
+        changed_by: "system-cron",
+        reason: "Hệ thống tự động hủy sau 24 giờ không có thợ nhận (FR-BOOK-007)",
+        created_at: new Date().toISOString()
+      });
+      const cp = (db.customer_profiles || []).find((c) => Number(c.customer_id) === Number(bk.customer_id));
+      if (cp && cp.user_id) {
+        dispatchNotification(db, {
+          user_id: cp.user_id,
+          title: "Đơn đặt lịch đã hết hạn",
+          body: `Đơn #${bk.booking_id} đã tự động hủy do chưa có thợ nhận sau 24h. Quý khách vui lòng thử lại vào khung giờ khác.`,
+          type: "booking_cancelled",
+          link: "#1.3",
+          isProd: false
+        });
+      }
+      count++;
+    }
+    if (count > 0) {
+      saveLocalDb(db);
+    }
+  }
+  return count;
+}
+
 async function handleApiRequest(req, res, pathname, searchParams = new URLSearchParams()) {
   const method = req.method.toUpperCase();
   const isProd = isProductionMode(req, searchParams);
@@ -501,6 +652,12 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       tableCounts.bookings = (db.bookings || []).length;
       tableCounts.reviews = (db.reviews || []).length;
       tableCounts.support_tickets = (db.support_tickets || []).length;
+      tableCounts.customer_addresses = (db.customer_addresses || []).length;
+      tableCounts.ticket_messages = (db.ticket_messages || []).length;
+      tableCounts.notifications = (db.notifications || []).length;
+      tableCounts.audit_logs = (db.audit_logs || []).length;
+      tableCounts.ai_conversations = (db.ai_conversations || []).length;
+      tableCounts.ai_messages = (db.ai_messages || []).length;
     }
 
     return sendJson(res, 200, {
@@ -1190,28 +1347,103 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
   // 4.10. POST /api/bookings — Màn hình 1.2: Tạo đơn đặt lịch mới (Cold Start an toàn)
   if (method === "POST" && pathname === "/api/bookings") {
     const body = await parseBody(req);
-    const serviceId = Number(body.service_id);
-    const providerId = body.provider_id ? Number(body.provider_id) : null;
-    const wardId = String(body.ward_id || "27403");
-    const customerId = Number(body.customer_id);
+    const rawServiceId = body.service_id;
+    const rawCustomerId = body.customer_id;
+    const rawProviderId = body.provider_id;
     const address = String(body.address || "").trim();
+    const wardId = String(body.ward_id || "27403").trim();
+
+    const serviceId = rawServiceId !== undefined && rawServiceId !== null && String(rawServiceId).trim() !== ""
+      ? (!isNaN(Number(rawServiceId)) ? Number(rawServiceId) : String(rawServiceId).trim())
+      : null;
+
+    const customerId = rawCustomerId !== undefined && rawCustomerId !== null && String(rawCustomerId).trim() !== ""
+      ? (!isNaN(Number(rawCustomerId)) ? Number(rawCustomerId) : String(rawCustomerId).trim())
+      : null;
+
+    const isBroadcast = (rawProviderId === null || rawProviderId === undefined || rawProviderId === "broadcast" || String(rawProviderId).trim() === "");
+    const providerId = isBroadcast
+      ? null
+      : (!isNaN(Number(rawProviderId)) ? Number(rawProviderId) : String(rawProviderId).trim());
 
     if (!serviceId || !wardId || !address || !customerId) {
       return sendJson(res, 400, { ok: false, error: "Vui lòng điền đầy đủ dịch vụ, khách hàng, phường/xã và địa chỉ." });
     }
 
-    if (isProd) {
-      if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
+    const isUuid = (val) => typeof val === "string" && val.includes("-");
+    const useSupabase = Boolean(client) && (isProd || isUuid(serviceId) || isUuid(customerId));
+
+    if (useSupabase) {
       const nowIso = new Date().toISOString();
-      const isBroadcast = (body.provider_id === null || body.provider_id === undefined || body.provider_id === "broadcast");
+      const targetProvId = isBroadcast ? null : providerId;
+
+      // Kiểm tra trùng lịch và ngày nghỉ nếu đặt trực tiếp thợ
+      if (targetProvId) {
+        const reqDate = (body.scheduled_time || nowIso).slice(0, 10);
+        const { data: exceptions } = await client
+          .from("availability_exceptions")
+          .select("*")
+          .eq("provider_id", targetProvId)
+          .eq("exception_date", reqDate);
+        if (exceptions && exceptions.some(ex => ex.is_available !== true)) {
+          return sendJson(res, 409, {
+            ok: false,
+            conflict: true,
+            error: "Thợ đã đăng ký nghỉ làm hoặc bận vào ngày này. Vui lòng chọn ngày khác hoặc để hệ thống tìm thợ tự động."
+          });
+        }
+
+        const reqTime = new Date(body.scheduled_time || nowIso).getTime();
+        const { data: existingBks } = await client
+          .from("bookings")
+          .select("booking_id, scheduled_time, status")
+          .eq("provider_id", targetProvId)
+          .in("status", ["confirmed", "in_progress"]);
+        if (existingBks && existingBks.length > 0) {
+          const conflict = existingBks.some(b => {
+            const bTime = new Date(b.scheduled_time).getTime();
+            return Math.abs(reqTime - bTime) < 2 * 60 * 60 * 1000;
+          });
+          if (conflict) {
+            return sendJson(res, 409, {
+              ok: false,
+              conflict: true,
+              error: "Thợ đã có lịch hẹn trùng hoặc quá sát khung giờ này (cần cách tối thiểu 2 giờ). Vui lòng chọn giờ khác hoặc tìm thợ tự động."
+            });
+          }
+        }
+      }
+
+      let finalProvId = targetProvId;
+      if (!finalProvId) {
+        const { data: anyProv } = await client.from("provider_profiles").select("provider_id").limit(1).maybeSingle();
+        finalProvId = anyProv ? anyProv.provider_id : "00000000-0000-4000-8000-000000000200";
+      }
+
+      // Đảm bảo ward_id tồn tại trong bảng ward/wards của Supabase
+      let validWardId = wardId;
+      let wardTarget = "ward";
+      let { data: wardList, error: wErr } = await client.from("ward").select("ward_id").eq("ward_id", validWardId).limit(1);
+      if (wErr) {
+        wardTarget = "wards";
+        const wRes = await client.from("wards").select("ward_id").eq("ward_id", validWardId).limit(1);
+        wardList = wRes.data;
+      }
+      if (!wardList || wardList.length === 0) {
+        const { data: fallbackWards } = await client.from(wardTarget).select("ward_id").limit(1);
+        if (fallbackWards && fallbackWards.length > 0) {
+          validWardId = fallbackWards[0].ward_id;
+        }
+      }
+
       const newBk = {
         customer_id: customerId,
-        provider_id: isBroadcast ? null : (Number(body.provider_id) || body.provider_id),
+        provider_id: finalProvId,
         service_id: serviceId,
         scheduled_time: body.scheduled_time || nowIso,
         status: "pending",
         address,
-        ward_id: wardId,
+        ward_id: validWardId,
         latitude: Number(body.latitude) || 10.728912,
         longitude: Number(body.longitude) || 106.712405,
         total_amount: Number(body.total_amount) || 180000,
@@ -1223,6 +1455,11 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       const { data: createdBk, error: bkErr } = await client.from("bookings").insert([newBk]).select().single();
       if (bkErr) return sendJson(res, 500, { ok: false, error: `Lỗi tạo đơn Supabase: ${bkErr.message}` });
 
+      if (isBroadcast && createdBk) {
+        createdBk.provider_id = null;
+        createdBk.dispatch_type = "broadcast";
+      }
+
       await client.from("booking_status_history").insert([{
         booking_id: createdBk.booking_id,
         previous_status: null,
@@ -1231,15 +1468,69 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
         reason: "Khách hàng tạo đơn đặt lịch"
       }]);
 
+      const { data: cp } = await client.from("customer_profiles").select("user_id").eq("customer_id", customerId).maybeSingle();
+      if (cp && cp.user_id) {
+        await dispatchNotification(null, {
+          user_id: cp.user_id,
+          title: "Đặt lịch thành công!",
+          body: `Đơn #${createdBk.booking_id} đã được tạo thành công. Hệ thống đang tiến hành điều phối thợ.`,
+          type: "booking_created",
+          link: "#1.3",
+          isProd: true,
+          client
+        });
+      }
+
+      await logAudit(null, {
+        actor_id: body.changed_by || customerId,
+        action: "CREATE_BOOKING",
+        target_entity: "bookings",
+        target_id: createdBk.booking_id,
+        details: { service_id: serviceId, provider_id: targetProvId, total_amount: newBk.total_amount },
+        isProd: true,
+        client
+      });
+
       return sendJson(res, 201, { ok: true, booking: createdBk });
     }
 
     // Local mode
-    const svc = db.services.find((s) => s.service_id === serviceId);
+    const svc = db.services.find((s) => String(s.service_id) === String(serviceId));
     const nextId = Math.max(1040, ...db.bookings.map((b) => b.booking_id || 0)) + 1;
     const nowIso = new Date().toISOString();
-    const isBroadcast = (body.provider_id === null || body.provider_id === undefined || body.provider_id === "broadcast");
-    const chosenProviderId = isBroadcast ? null : Number(body.provider_id);
+    const chosenProviderId = isBroadcast ? null : providerId;
+
+    // Kiểm tra trùng lịch và ngày nghỉ nếu đặt trực tiếp thợ
+    if (chosenProviderId) {
+      const reqDate = (body.scheduled_time || nowIso).slice(0, 10);
+      const isDayOff = (db.availability_exceptions || []).some((ex) => {
+        return String(ex.provider_id) === String(chosenProviderId) &&
+          ex.exception_date === reqDate &&
+          ex.is_available !== true;
+      });
+      if (isDayOff) {
+        return sendJson(res, 409, {
+          ok: false,
+          conflict: true,
+          error: "Thợ đã đăng ký nghỉ làm hoặc bận vào ngày này. Vui lòng chọn ngày khác hoặc để hệ thống tìm thợ tự động."
+        });
+      }
+
+      const reqTime = new Date(body.scheduled_time || nowIso).getTime();
+      const hasConflict = (db.bookings || []).some((b) => {
+        if (String(b.provider_id) !== String(chosenProviderId)) return false;
+        if (!["confirmed", "in_progress"].includes(b.status)) return false;
+        const bTime = new Date(b.scheduled_time).getTime();
+        return Math.abs(reqTime - bTime) < 2 * 60 * 60 * 1000;
+      });
+      if (hasConflict) {
+        return sendJson(res, 409, {
+          ok: false,
+          conflict: true,
+          error: "Thợ đã có lịch hẹn trùng hoặc quá sát khung giờ này (cần cách tối thiểu 2 giờ). Vui lòng chọn giờ khác hoặc tìm thợ tự động."
+        });
+      }
+    }
 
     const newBooking = {
       booking_id: nextId,
@@ -1273,6 +1564,44 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       created_at: nowIso
     };
     db.booking_status_history.unshift(historyRow);
+
+    // Gửi thông báo đến khách hàng
+    const cp = (db.customer_profiles || []).find((c) => String(c.customer_id) === String(customerId));
+    if (cp && cp.user_id) {
+      dispatchNotification(db, {
+        user_id: cp.user_id,
+        title: "Đặt lịch thành công!",
+        body: `Đơn #${nextId} đã được tạo thành công. Hệ thống đang tiến hành điều phối thợ.`,
+        type: "booking_created",
+        link: "#1.3",
+        isProd: false
+      });
+    }
+
+    // Nếu đặt trực tiếp thợ, gửi thông báo cho thợ
+    if (chosenProviderId) {
+      const pp = (db.provider_profiles || []).find((p) => String(p.provider_id) === String(chosenProviderId));
+      if (pp && pp.user_id) {
+        dispatchNotification(db, {
+          user_id: pp.user_id,
+          title: "Đơn đặt lịch trực tiếp mới",
+          body: `Khách hàng vừa đặt đơn #${nextId} trực tiếp với bạn vào ${newBooking.scheduled_time.slice(0, 16)}.`,
+          type: "booking_created",
+          link: "#2.2",
+          isProd: false
+        });
+      }
+    }
+
+    logAudit(db, {
+      actor_id: body.changed_by || customerId,
+      action: "CREATE_BOOKING",
+      target_entity: "bookings",
+      target_id: nextId,
+      details: { service_id: serviceId, provider_id: chosenProviderId, total_amount: newBooking.total_amount },
+      isProd: false
+    });
+
     saveLocalDb(db);
     return sendJson(res, 201, { ok: true, booking: newBooking, history: historyRow });
   }
@@ -1596,43 +1925,77 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     return sendJson(res, 201, { ok: true, review: rev });
   }
 
-  // 4.16. POST /api/favorites/toggle — Lưu / Bỏ lưu dịch vụ yêu thích
+  // 4.16. POST /api/favorites/toggle — Lưu / Bỏ lưu dịch vụ hoặc thợ yêu thích (FR-FAV-001)
   if (method === "POST" && pathname === "/api/favorites/toggle") {
     const body = await parseBody(req);
-    const customerId = Number(body.customer_id);
-    const serviceId = Number(body.service_id);
+    const customerId = Number(body.customer_id) || 101;
+    const serviceId = body.service_id ? Number(body.service_id) : null;
+    const providerId = body.provider_id ? Number(body.provider_id) : null;
+
+    if (!serviceId && !providerId) {
+      return sendJson(res, 400, { ok: false, error: "Cần truyền service_id hoặc provider_id để lưu yêu thích." });
+    }
 
     if (isProd) {
       if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
-      const { data: existing } = await client.from("favorites").select("favorite_id").eq("customer_id", customerId).eq("service_id", serviceId).maybeSingle();
+      let query = client.from("favorites").select("favorite_id").eq("customer_id", customerId);
+      if (serviceId) query = query.eq("service_id", serviceId);
+      if (providerId) query = query.eq("provider_id", providerId);
+      const { data: existing } = await query.maybeSingle();
+
       if (existing) {
         await client.from("favorites").delete().eq("favorite_id", existing.favorite_id);
-        return sendJson(res, 200, { ok: true, added: false });
+        return sendJson(res, 200, { ok: true, added: false, type: serviceId ? "service" : "provider" });
       } else {
-        await client.from("favorites").insert([{ customer_id: customerId, service_id: serviceId }]);
-        return sendJson(res, 200, { ok: true, added: true });
+        const newRow = { customer_id: customerId };
+        if (serviceId) newRow.service_id = serviceId;
+        if (providerId) newRow.provider_id = providerId;
+        await client.from("favorites").insert([newRow]);
+        return sendJson(res, 200, { ok: true, added: true, type: serviceId ? "service" : "provider" });
       }
     }
 
-    const targetCid = customerId || 101;
-    const idx = db.favorites.findIndex((f) => f.customer_id === targetCid && f.service_id === serviceId);
+    let idx = -1;
+    if (serviceId) {
+      idx = db.favorites.findIndex((f) => Number(f.customer_id) === customerId && Number(f.service_id) === serviceId);
+    } else if (providerId) {
+      idx = db.favorites.findIndex((f) => Number(f.customer_id) === customerId && Number(f.provider_id) === providerId);
+    }
+
     let added = false;
     if (idx >= 0) {
       db.favorites.splice(idx, 1);
     } else {
-      db.favorites.push({
+      const favRow = {
         favorite_id: Date.now(),
-        customer_id: targetCid,
+        customer_id: customerId,
         service_id: serviceId,
+        provider_id: providerId,
         created_at: new Date().toISOString()
-      });
+      };
+      db.favorites.push(favRow);
       added = true;
     }
     saveLocalDb(db);
-    return sendJson(res, 200, { ok: true, added, favorites: db.favorites });
+    return sendJson(res, 200, { ok: true, added, type: serviceId ? "service" : "provider", favorites: db.favorites });
   }
 
-  // 4.17. POST /api/support-tickets — Gửi yêu cầu hỗ trợ
+  // 4.16b. GET /api/favorites — Lấy danh sách yêu thích
+  if (method === "GET" && pathname === "/api/favorites") {
+    const customerId = Number(searchParams.get("customer_id")) || 101;
+    if (isProd && client) {
+      const { data: favs } = await client.from("favorites").select("*").eq("customer_id", customerId);
+      return sendJson(res, 200, { ok: true, favorites: favs || [] });
+    }
+    const favs = (db.favorites || []).filter((f) => Number(f.customer_id) === customerId);
+    const serviceIds = favs.filter((f) => f.service_id).map((f) => Number(f.service_id));
+    const providerIds = favs.filter((f) => f.provider_id).map((f) => Number(f.provider_id));
+    const services = (db.services || []).filter((s) => serviceIds.includes(Number(s.service_id)));
+    const providers = (db.provider_public_profiles || []).filter((p) => providerIds.includes(Number(p.provider_id)));
+    return sendJson(res, 200, { ok: true, favorites: favs, services, providers });
+  }
+
+  // 4.17. POST /api/support-tickets — Gửi yêu cầu hỗ trợ (FR-TKT-001)
   if (method === "POST" && pathname === "/api/support-tickets") {
     const body = await parseBody(req);
     const nowIso = new Date().toISOString();
@@ -1666,10 +2029,286 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     return sendJson(res, 201, { ok: true, ticket });
   }
 
-  // 4.18. Admin APIs (KYC, Services, Categories)
+  // 4.17b. GET & POST /api/tickets/:id/messages — Trao đổi trong phiếu hỗ trợ & Ghi chú nội bộ (FR-TKT-005)
+  const ticketMsgMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/messages$/);
+  if (method === "GET" && ticketMsgMatch) {
+    const ticketId = Number(ticketMsgMatch[1]);
+    const role = searchParams.get("role") || "customer";
+
+    if (isProd && client) {
+      let query = client.from("ticket_messages").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true });
+      if (role !== "admin") {
+        query = query.eq("visibility", "public");
+      }
+      const { data: msgs, error } = await query;
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, messages: msgs || [] });
+    }
+
+    let msgs = (db.ticket_messages || []).filter((m) => Number(m.ticket_id) === ticketId);
+    if (role !== "admin") {
+      msgs = msgs.filter((m) => m.visibility === "public" || !m.visibility);
+    }
+    return sendJson(res, 200, { ok: true, messages: msgs });
+  }
+
+  if (method === "POST" && ticketMsgMatch) {
+    const ticketId = Number(ticketMsgMatch[1]);
+    const body = await parseBody(req);
+    const content = String(body.content || "").trim();
+    const visibility = body.visibility === "internal" ? "internal" : "public";
+    const senderId = body.sender_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const senderRole = body.sender_role || "customer";
+
+    if (!content) {
+      return sendJson(res, 400, { ok: false, error: "Nội dung phản hồi không được để trống." });
+    }
+
+    const nowIso = new Date().toISOString();
+    const newMsg = {
+      message_id: isProd ? crypto.randomUUID() : Math.max(900, ...(db.ticket_messages || []).map((m) => typeof m.message_id === "number" ? m.message_id : 0)) + 1,
+      ticket_id: ticketId,
+      sender_id: senderId,
+      sender_role: senderRole,
+      content,
+      visibility,
+      created_at: nowIso
+    };
+
+    if (isProd && client) {
+      const { data: insMsg, error: insErr } = await client.from("ticket_messages").insert([newMsg]).select().single();
+      if (insErr) return sendJson(res, 500, { ok: false, error: insErr.message });
+      await client.from("support_tickets").update({ updated_at: nowIso }).eq("ticket_id", ticketId);
+      return sendJson(res, 201, { ok: true, message: insMsg });
+    }
+
+    if (!Array.isArray(db.ticket_messages)) db.ticket_messages = [];
+    db.ticket_messages.push(newMsg);
+    const tk = (db.support_tickets || []).find((t) => Number(t.ticket_id) === ticketId);
+    if (tk) {
+      tk.updated_at = nowIso;
+      if (senderRole === "admin" && visibility === "public" && tk.user_id) {
+        dispatchNotification(db, {
+          user_id: tk.user_id,
+          title: `Phản hồi mới cho phiếu #${ticketId}`,
+          body: `Admin đã phản hồi: "${content.slice(0, 80)}${content.length > 80 ? "..." : ""}"`,
+          type: "ticket_reply",
+          link: "#1.11",
+          isProd: false
+        });
+      }
+    }
+    saveLocalDb(db);
+    return sendJson(res, 201, { ok: true, message: newMsg });
+  }
+
+  // 4.17c. PATCH /api/tickets/:id/status — Cập nhật trạng thái phiếu hỗ trợ
+  const ticketStatusMatch = pathname.match(/^\/api\/tickets\/([^/]+)\/status$/);
+  if (method === "PATCH" && ticketStatusMatch) {
+    const ticketId = Number(ticketStatusMatch[1]);
+    const body = await parseBody(req);
+    const newStatus = body.status;
+    const newPriority = body.priority;
+    const actorId = body.actor_id || "admin";
+
+    if (isProd && client) {
+      const updates = { updated_at: new Date().toISOString() };
+      if (newStatus) updates.status = newStatus;
+      if (newPriority) updates.priority = newPriority;
+      const { data: updatedTk, error } = await client.from("support_tickets").update(updates).eq("ticket_id", ticketId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      await logAudit(null, {
+        actor_id: actorId,
+        action: "UPDATE_TICKET_STATUS",
+        target_entity: "support_tickets",
+        target_id: ticketId,
+        details: updates,
+        isProd: true,
+        client
+      });
+      return sendJson(res, 200, { ok: true, ticket: updatedTk });
+    }
+
+    const tk = (db.support_tickets || []).find((t) => Number(t.ticket_id) === ticketId);
+    if (!tk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy phiếu hỗ trợ." });
+    if (newStatus) tk.status = newStatus;
+    if (newPriority) tk.priority = newPriority;
+    tk.updated_at = new Date().toISOString();
+    logAudit(db, {
+      actor_id: actorId,
+      action: "UPDATE_TICKET_STATUS",
+      target_entity: "support_tickets",
+      target_id: ticketId,
+      details: { status: newStatus, priority: newPriority },
+      isProd: false
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, ticket: tk });
+  }
+
+  // 4.17d. Sổ địa chỉ khách hàng: GET, POST, PUT, DELETE /api/customer/addresses (FR-CUST-003)
+  if (method === "GET" && pathname === "/api/customer/addresses") {
+    const customerId = Number(searchParams.get("customer_id")) || 101;
+    if (isProd && client) {
+      const { data: addrs, error } = await client.from("customer_addresses").select("*").eq("customer_id", customerId);
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, addresses: addrs || [] });
+    }
+    const addrs = (db.customer_addresses || []).filter((a) => Number(a.customer_id) === customerId);
+    return sendJson(res, 200, { ok: true, addresses: addrs });
+  }
+
+  if (method === "POST" && pathname === "/api/customer/addresses") {
+    const body = await parseBody(req);
+    const customerId = Number(body.customer_id) || 101;
+    const tag = String(body.tag || "Nhà riêng").trim();
+    const streetAddress = String(body.street_address || "").trim();
+    const wardId = String(body.ward_id || "27403");
+    const isDefault = Boolean(body.is_default);
+
+    if (!streetAddress) {
+      return sendJson(res, 400, { ok: false, error: "Địa chỉ đường/phố là bắt buộc." });
+    }
+
+    const nowIso = new Date().toISOString();
+    const nextId = isProd ? crypto.randomUUID() : Math.max(10, ...(db.customer_addresses || []).map((a) => typeof a.address_id === "number" ? a.address_id : 0)) + 1;
+    const newAddr = {
+      address_id: nextId,
+      customer_id: customerId,
+      tag,
+      street_address: streetAddress,
+      ward_id: wardId,
+      latitude: Number(body.latitude) || 10.728912,
+      longitude: Number(body.longitude) || 106.712405,
+      is_default: isDefault,
+      created_at: nowIso
+    };
+
+    if (isProd && client) {
+      if (isDefault) {
+        await client.from("customer_addresses").update({ is_default: false }).eq("customer_id", customerId);
+      }
+      const { data: created, error } = await client.from("customer_addresses").insert([newAddr]).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 201, { ok: true, address: created });
+    }
+
+    if (!Array.isArray(db.customer_addresses)) db.customer_addresses = [];
+    if (isDefault) {
+      db.customer_addresses.forEach((a) => {
+        if (Number(a.customer_id) === customerId) a.is_default = false;
+      });
+    }
+    db.customer_addresses.push(newAddr);
+    saveLocalDb(db);
+    return sendJson(res, 201, { ok: true, address: newAddr });
+  }
+
+  const addrMatch = pathname.match(/^\/api\/customer\/addresses\/([^/]+)$/);
+  if (method === "PUT" && addrMatch) {
+    const addressId = addrMatch[1];
+    const body = await parseBody(req);
+    const isDefault = Boolean(body.is_default);
+
+    if (isProd && client) {
+      const { data: cur } = await client.from("customer_addresses").select("customer_id").eq("address_id", addressId).single();
+      if (isDefault && cur) {
+        await client.from("customer_addresses").update({ is_default: false }).eq("customer_id", cur.customer_id);
+      }
+      const updates = {};
+      if (body.tag) updates.tag = String(body.tag).trim();
+      if (body.street_address) updates.street_address = String(body.street_address).trim();
+      if (body.ward_id) updates.ward_id = String(body.ward_id);
+      if (body.latitude) updates.latitude = Number(body.latitude);
+      if (body.longitude) updates.longitude = Number(body.longitude);
+      if (body.is_default !== undefined) updates.is_default = isDefault;
+      const { data: upd, error } = await client.from("customer_addresses").update(updates).eq("address_id", addressId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, address: upd });
+    }
+
+    const addr = (db.customer_addresses || []).find((a) => String(a.address_id) === String(addressId));
+    if (!addr) return sendJson(res, 404, { ok: false, error: "Không tìm thấy địa chỉ." });
+    if (isDefault) {
+      (db.customer_addresses || []).forEach((a) => {
+        if (Number(a.customer_id) === Number(addr.customer_id)) a.is_default = false;
+      });
+    }
+    if (body.tag) addr.tag = String(body.tag).trim();
+    if (body.street_address) addr.street_address = String(body.street_address).trim();
+    if (body.ward_id) addr.ward_id = String(body.ward_id);
+    if (body.latitude) addr.latitude = Number(body.latitude);
+    if (body.longitude) addr.longitude = Number(body.longitude);
+    if (body.is_default !== undefined) addr.is_default = isDefault;
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, address: addr });
+  }
+
+  if (method === "DELETE" && addrMatch) {
+    const addressId = addrMatch[1];
+    if (isProd && client) {
+      const { error } = await client.from("customer_addresses").delete().eq("address_id", addressId);
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, message: "Đã xóa địa chỉ." });
+    }
+    db.customer_addresses = (db.customer_addresses || []).filter((a) => String(a.address_id) !== String(addressId));
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, message: "Đã xóa địa chỉ." });
+  }
+
+  // 4.17e. Thông báo người dùng (FR-NOTIF-001)
+  if (method === "GET" && pathname === "/api/notifications") {
+    const userId = searchParams.get("user_id");
+    if (isProd && client) {
+      let q = client.from("notifications").select("*").order("created_at", { ascending: false });
+      if (userId) q = q.eq("user_id", userId);
+      const { data: notifs, error } = await q;
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, notifications: notifs || [] });
+    }
+    let notifs = db.notifications || [];
+    if (userId) {
+      notifs = notifs.filter((n) => String(n.user_id) === String(userId));
+    }
+    return sendJson(res, 200, { ok: true, notifications: notifs });
+  }
+
+  const notifReadMatch = pathname.match(/^\/api\/notifications\/([^/]+)\/read$/);
+  if ((method === "POST" || method === "PATCH") && notifReadMatch) {
+    const notifId = notifReadMatch[1];
+    if (isProd && client) {
+      await client.from("notifications").update({ is_read: true }).eq("notification_id", notifId);
+      return sendJson(res, 200, { ok: true, message: "Đã đánh dấu đã đọc" });
+    }
+    const notif = (db.notifications || []).find((n) => String(n.notification_id) === String(notifId));
+    if (notif) notif.is_read = true;
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, message: "Đã đánh dấu đã đọc" });
+  }
+
+  if (method === "POST" && pathname === "/api/notifications/read-all") {
+    const body = await parseBody(req);
+    const userId = body.user_id;
+    if (isProd && client) {
+      let q = client.from("notifications").update({ is_read: true });
+      if (userId) q = q.eq("user_id", userId);
+      await q;
+      return sendJson(res, 200, { ok: true, message: "Đã đọc tất cả thông báo" });
+    }
+    (db.notifications || []).forEach((n) => {
+      if (!userId || String(n.user_id) === String(userId)) {
+        n.is_read = true;
+      }
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, message: "Đã đọc tất cả thông báo" });
+  }
+
+  // 4.18. Admin APIs (KYC, Services, Categories, Reviews, Audit)
   if (method === "PATCH" && pathname.startsWith("/api/admin/kyc/")) {
     const providerId = Number(pathname.split("/").pop());
     const body = await parseBody(req);
+    const actorId = body.actor_id || "admin";
 
     if (isProd) {
       if (!client) return sendJson(res, 503, { ok: false, error: "Không có kết nối Supabase ở Production Mode." });
@@ -1678,6 +2317,15 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
         updated_at: new Date().toISOString()
       }).eq("provider_id", providerId).select().single();
       if (err) return sendJson(res, 500, { ok: false, error: err.message });
+      await logAudit(null, {
+        actor_id: actorId,
+        action: "UPDATE_KYC_STATUS",
+        target_entity: "provider_profiles",
+        target_id: providerId,
+        details: { status: body.verification_status },
+        isProd: true,
+        client
+      });
       return sendJson(res, 200, { ok: true, provider_profile: pp });
     }
 
@@ -1685,8 +2333,549 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     if (!pp) return sendJson(res, 404, { ok: false, error: "Không tìm thấy hồ sơ thợ." });
     if (body.verification_status) pp.verification_status = body.verification_status;
     pp.updated_at = new Date().toISOString();
+    logAudit(db, {
+      actor_id: actorId,
+      action: "UPDATE_KYC_STATUS",
+      target_entity: "provider_profiles",
+      target_id: providerId,
+      details: { status: body.verification_status },
+      isProd: false
+    });
+    if (pp.user_id) {
+      dispatchNotification(db, {
+        user_id: pp.user_id,
+        title: body.verification_status === "verified" ? "Hồ sơ đối tác đã được phê duyệt!" : "Cập nhật hồ sơ đối tác",
+        body: body.verification_status === "verified" ? "Chúc mừng bạn đã hoàn tất xác thực CCCD và có thể nhận đơn ngay bây giờ." : `Hồ sơ xác thực của bạn chuyển sang trạng thái: ${body.verification_status}`,
+        type: "kyc_update",
+        link: "#2.1",
+        isProd: false
+      });
+    }
     saveLocalDb(db);
     return sendJson(res, 200, { ok: true, provider_profile: pp });
+  }
+
+  // 4.18b. Kiểm duyệt đánh giá: PATCH /api/admin/reviews/:id/moderate & DELETE /api/admin/reviews/:id (FR-REV-005)
+  const revModMatch = pathname.match(/^\/api\/admin\/reviews\/([^/]+)\/moderate$/);
+  if (method === "PATCH" && revModMatch) {
+    const reviewId = Number(revModMatch[1]);
+    const body = await parseBody(req);
+    const status = body.status === "hidden" ? "hidden" : "published";
+    const reason = String(body.moderation_reason || "").trim();
+    const actorId = body.actor_id || "admin";
+
+    if (isProd && client) {
+      const { data: rev, error } = await client.from("reviews").update({
+        status,
+        moderation_reason: reason
+      }).eq("review_id", reviewId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      await logAudit(null, {
+        actor_id: actorId,
+        action: status === "hidden" ? "HIDE_REVIEW" : "UNHIDE_REVIEW",
+        target_entity: "reviews",
+        target_id: reviewId,
+        details: { reason },
+        isProd: true,
+        client
+      });
+      return sendJson(res, 200, { ok: true, review: rev });
+    }
+
+    const rev = (db.reviews || []).find((r) => Number(r.review_id) === reviewId);
+    if (!rev) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đánh giá." });
+    rev.status = status;
+    rev.moderation_reason = reason;
+    if (rev.provider_id) recomputeProviderRating(db, rev.provider_id);
+    logAudit(db, {
+      actor_id: actorId,
+      action: status === "hidden" ? "HIDE_REVIEW" : "UNHIDE_REVIEW",
+      target_entity: "reviews",
+      target_id: reviewId,
+      details: { reason },
+      isProd: false
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, review: rev });
+  }
+
+  const revDelMatch = pathname.match(/^\/api\/admin\/reviews\/([^/]+)$/);
+  if (method === "DELETE" && revDelMatch) {
+    const reviewId = Number(revDelMatch[1]);
+    if (isProd && client) {
+      await client.from("reviews").update({ status: "hidden", moderation_reason: "Gỡ bởi Admin" }).eq("review_id", reviewId);
+      return sendJson(res, 200, { ok: true, message: "Đã gỡ bài đánh giá" });
+    }
+    const rev = (db.reviews || []).find((r) => Number(r.review_id) === reviewId);
+    if (rev) {
+      rev.status = "hidden";
+      rev.moderation_reason = "Gỡ bởi Admin";
+      if (rev.provider_id) recomputeProviderRating(db, rev.provider_id);
+      saveLocalDb(db);
+    }
+    return sendJson(res, 200, { ok: true, message: "Đã gỡ bài đánh giá" });
+  }
+
+  // 4.18c. Khách hàng chỉnh sửa đánh giá: PUT /api/reviews/:id
+  const revPutMatch = pathname.match(/^\/api\/reviews\/([^/]+)$/);
+  if (method === "PUT" && revPutMatch) {
+    const reviewId = Number(revPutMatch[1]);
+    const body = await parseBody(req);
+    const rating = Math.min(5, Math.max(1, Number(body.rating) || 5));
+    const comment = String(body.comment || "").trim();
+
+    if (isProd && client) {
+      const { data: rev, error } = await client.from("reviews").update({ rating, comment }).eq("review_id", reviewId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, review: rev });
+    }
+
+    const rev = (db.reviews || []).find((r) => Number(r.review_id) === reviewId);
+    if (!rev) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đánh giá." });
+    rev.rating = rating;
+    rev.comment = comment;
+    if (rev.provider_id) recomputeProviderRating(db, rev.provider_id);
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, review: rev });
+  }
+
+  // 4.18d. Nhật ký quản trị: GET /api/admin/audit-logs (FR-ADMIN-009)
+  if (method === "GET" && pathname === "/api/admin/audit-logs") {
+    if (isProd && client) {
+      const { data: logs, error } = await client.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(100);
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 200, { ok: true, audit_logs: logs || [] });
+    }
+    return sendJson(res, 200, { ok: true, audit_logs: db.audit_logs || [] });
+  }
+
+  // 4.18e. Khóa / Mở khóa tài khoản người dùng: PATCH /api/admin/users/:id/toggle-active
+  const userToggleMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)\/toggle-active$/);
+  if (method === "PATCH" && userToggleMatch) {
+    const userId = userToggleMatch[1];
+    if (isProd && client) {
+      const { data: u } = await client.from("users").select("is_active, full_name").eq("user_id", userId).single();
+      if (!u) return sendJson(res, 404, { ok: false, error: "Không tìm thấy người dùng." });
+      const nextActive = !u.is_active;
+      await client.from("users").update({ is_active: nextActive }).eq("user_id", userId);
+      await logAudit(null, {
+        actor_id: "admin",
+        action: nextActive ? "ACTIVATE_USER" : "DEACTIVATE_USER",
+        target_entity: "users",
+        target_id: userId,
+        details: { user: u.full_name, is_active: nextActive },
+        isProd: true,
+        client
+      });
+      return sendJson(res, 200, { ok: true, is_active: nextActive });
+    }
+
+    const u = (db.users || []).find((x) => String(x.user_id) === String(userId));
+    if (!u) return sendJson(res, 404, { ok: false, error: "Không tìm thấy người dùng." });
+    u.is_active = !u.is_active;
+    logAudit(db, {
+      actor_id: "admin",
+      action: u.is_active ? "ACTIVATE_USER" : "DEACTIVATE_USER",
+      target_entity: "users",
+      target_id: userId,
+      details: { user: u.full_name, is_active: u.is_active },
+      isProd: false
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, is_active: u.is_active });
+  }
+
+  // 4.18f. Mở / Ẩn bán dịch vụ: PATCH /api/admin/services/:id/toggle
+  const svcToggleMatch = pathname.match(/^\/api\/admin\/services\/([^/]+)\/toggle$/);
+  if ((method === "PATCH" || method === "POST") && svcToggleMatch) {
+    const serviceId = Number(svcToggleMatch[1]);
+    if (isProd && client) {
+      const { data: s } = await client.from("services").select("is_active, title").eq("service_id", serviceId).single();
+      if (!s) return sendJson(res, 404, { ok: false, error: "Không tìm thấy dịch vụ." });
+      const nextActive = !s.is_active;
+      await client.from("services").update({ is_active: nextActive }).eq("service_id", serviceId);
+      await logAudit(null, {
+        actor_id: "admin",
+        action: nextActive ? "ACTIVATE_SERVICE" : "DEACTIVATE_SERVICE",
+        target_entity: "services",
+        target_id: serviceId,
+        details: { service: s.title, is_active: nextActive },
+        isProd: true,
+        client
+      });
+      return sendJson(res, 200, { ok: true, is_active: nextActive });
+    }
+
+    const s = (db.services || []).find((x) => Number(x.service_id) === serviceId);
+    if (!s) return sendJson(res, 404, { ok: false, error: "Không tìm thấy dịch vụ." });
+    s.is_active = !s.is_active;
+    logAudit(db, {
+      actor_id: "admin",
+      action: s.is_active ? "ACTIVATE_SERVICE" : "DEACTIVATE_SERVICE",
+      target_entity: "services",
+      target_id: serviceId,
+      details: { service: s.title, is_active: s.is_active },
+      isProd: false
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, is_active: s.is_active });
+  }
+
+  // 4.18g. Thêm dịch vụ mới & Danh mục mới
+  if (method === "POST" && pathname === "/api/admin/services") {
+    const body = await parseBody(req);
+    const title = String(body.title || "").trim();
+    const price = Number(body.price) || 100000;
+    const categoryId = Number(body.category_id) || 1;
+
+    if (!title) return sendJson(res, 400, { ok: false, error: "Tên dịch vụ là bắt buộc." });
+
+    if (isProd && client) {
+      const { data: created, error } = await client.from("services").insert([{
+        title,
+        price,
+        category_id: categoryId,
+        duration_minutes: Number(body.duration_minutes) || 120,
+        pricing_type: body.pricing_type || "hourly",
+        description: body.description || "",
+        image_url: body.image_url || "assets/cleaning-livingroom.jpg",
+        is_active: true
+      }]).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 201, { ok: true, service: created });
+    }
+
+    const nextId = Math.max(100, ...(db.services || []).map((s) => Number(s.service_id) || 0)) + 1;
+    const newSvc = {
+      service_id: nextId,
+      category_id: categoryId,
+      title,
+      price,
+      duration_minutes: Number(body.duration_minutes) || 120,
+      pricing_type: body.pricing_type || "hourly",
+      description: body.description || "",
+      image_url: body.image_url || "assets/cleaning-livingroom.jpg",
+      is_active: true
+    };
+    db.services.push(newSvc);
+    saveLocalDb(db);
+    return sendJson(res, 201, { ok: true, service: newSvc });
+  }
+
+  if (method === "POST" && pathname === "/api/admin/categories") {
+    const body = await parseBody(req);
+    const categoryName = String(body.category_name || "").trim();
+    if (!categoryName) return sendJson(res, 400, { ok: false, error: "Tên danh mục là bắt buộc." });
+
+    if (isProd && client) {
+      const { data: created, error } = await client.from("service_categories").insert([{
+        category_name: categoryName,
+        slug: body.slug || categoryName.toLowerCase().replace(/\s+/g, "-"),
+        description: body.description || "",
+        status: true
+      }]).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      return sendJson(res, 201, { ok: true, category: created });
+    }
+
+    const nextId = Math.max(1, ...(db.service_categories || []).map((c) => Number(c.category_id) || 0)) + 1;
+    const newCat = {
+      category_id: nextId,
+      category_name: categoryName,
+      slug: body.slug || categoryName.toLowerCase().replace(/\s+/g, "-"),
+      description: body.description || "",
+      status: true
+    };
+    db.service_categories.push(newCat);
+    saveLocalDb(db);
+    return sendJson(res, 201, { ok: true, category: newCat });
+  }
+
+  // 4.18h. Các thao tác đơn đặt lịch: Hủy đơn, Bắt đầu làm, Hoàn thành, Phát sinh (FR-BOOK-008 -> 010)
+  const bkCancelMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/cancel$/);
+  if (method === "POST" && bkCancelMatch) {
+    const bookingId = Number(bkCancelMatch[1]);
+    const body = await parseBody(req);
+    const reason = String(body.reason || "Khách hàng yêu cầu hủy đơn").trim();
+    const actorId = body.user_id || body.changed_by || null;
+
+    if (isProd && client) {
+      const { data: bk, error } = await client.from("bookings").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("booking_id", bookingId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      await client.from("booking_status_history").insert([{
+        booking_id: bookingId,
+        previous_status: bk ? bk.status : null,
+        new_status: "cancelled",
+        changed_by: actorId,
+        reason
+      }]);
+      return sendJson(res, 200, { ok: true, booking: bk });
+    }
+
+    const bk = (db.bookings || []).find((b) => Number(b.booking_id) === bookingId);
+    if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+    const oldStatus = bk.status;
+    bk.status = "cancelled";
+    bk.updated_at = new Date().toISOString();
+    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
+    db.booking_status_history.unshift({
+      history_id: nextHistoryId,
+      booking_id: bookingId,
+      previous_status: oldStatus,
+      new_status: "cancelled",
+      changed_by: actorId || "customer",
+      reason,
+      created_at: new Date().toISOString()
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, booking: bk });
+  }
+
+  const bkStartMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/start$/);
+  if (method === "POST" && bkStartMatch) {
+    const bookingId = Number(bkStartMatch[1]);
+    const body = await parseBody(req);
+    const actorId = body.user_id || body.changed_by || null;
+
+    if (isProd && client) {
+      const { data: bk, error } = await client.from("bookings").update({ status: "in_progress", updated_at: new Date().toISOString() }).eq("booking_id", bookingId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      await client.from("booking_status_history").insert([{
+        booking_id: bookingId,
+        previous_status: "confirmed",
+        new_status: "in_progress",
+        changed_by: actorId,
+        reason: "Thợ đã có mặt và bắt đầu công việc"
+      }]);
+      return sendJson(res, 200, { ok: true, booking: bk });
+    }
+
+    const bk = (db.bookings || []).find((b) => Number(b.booking_id) === bookingId);
+    if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+    const oldStatus = bk.status;
+    bk.status = "in_progress";
+    bk.updated_at = new Date().toISOString();
+    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
+    db.booking_status_history.unshift({
+      history_id: nextHistoryId,
+      booking_id: bookingId,
+      previous_status: oldStatus,
+      new_status: "in_progress",
+      changed_by: actorId || "provider",
+      reason: "Thợ đã có mặt và bắt đầu công việc",
+      created_at: new Date().toISOString()
+    });
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, booking: bk });
+  }
+
+  const bkCompleteMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/complete$/);
+  if (method === "POST" && bkCompleteMatch) {
+    const bookingId = Number(bkCompleteMatch[1]);
+    const body = await parseBody(req);
+    const actorId = body.user_id || body.changed_by || null;
+
+    if (isProd && client) {
+      const { data: bk, error } = await client.from("bookings").update({ status: "completed", updated_at: new Date().toISOString() }).eq("booking_id", bookingId).select().single();
+      if (error) return sendJson(res, 500, { ok: false, error: error.message });
+      await client.from("booking_status_history").insert([{
+        booking_id: bookingId,
+        previous_status: "in_progress",
+        new_status: "completed",
+        changed_by: actorId,
+        reason: "Thợ hoàn thành công việc"
+      }]);
+      return sendJson(res, 200, { ok: true, booking: bk });
+    }
+
+    const bk = (db.bookings || []).find((b) => Number(b.booking_id) === bookingId);
+    if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+    const oldStatus = bk.status;
+    bk.status = "completed";
+    bk.updated_at = new Date().toISOString();
+    const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
+    db.booking_status_history.unshift({
+      history_id: nextHistoryId,
+      booking_id: bookingId,
+      previous_status: oldStatus,
+      new_status: "completed",
+      changed_by: actorId || "provider",
+      reason: "Thợ hoàn thành công việc",
+      created_at: new Date().toISOString()
+    });
+
+    const cp = (db.customer_profiles || []).find((c) => Number(c.customer_id) === Number(bk.customer_id));
+    if (cp && cp.user_id) {
+      dispatchNotification(db, {
+        user_id: cp.user_id,
+        title: "Đơn hàng đã hoàn thành!",
+        body: `Đơn #${bookingId} đã được hoàn tất. Hãy dành 30 giây để đánh giá chất lượng thợ nhé!`,
+        type: "booking_completed",
+        link: "#1.3",
+        isProd: false
+      });
+    }
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, booking: bk });
+  }
+
+  const bkIncMatch = pathname.match(/^\/api\/bookings\/([^/]+)\/incidental$/);
+  if (method === "POST" && bkIncMatch) {
+    const bookingId = Number(bkIncMatch[1]);
+    const body = await parseBody(req);
+    const incidental = Number(body.total_incidental || body.incidental) || 0;
+    const notes = String(body.notes || "").trim();
+
+    const bk = (db.bookings || []).find((b) => Number(b.booking_id) === bookingId);
+    if (!bk) return sendJson(res, 404, { ok: false, error: "Không tìm thấy đơn hàng." });
+    const basePrice = Math.max(0, bk.total_amount - (bk.total_incidental || 0));
+    bk.total_incidental = incidental;
+    bk.total_amount = basePrice + incidental;
+    if (notes) {
+      bk.notes = (bk.notes ? bk.notes + "\n" : "") + `[Phát sinh: ${incidental.toLocaleString("vi-VN")} đ] ${notes}`;
+    }
+    bk.updated_at = new Date().toISOString();
+    saveLocalDb(db);
+    return sendJson(res, 200, { ok: true, booking: bk });
+  }
+
+  // 4.19. POST /api/ai/chat & /api/v1/ai/chat — Trợ lý AI Gia Đình Xanh (Grounded RAG Assistant) (FR-AI-001 -> 005)
+  if (method === "POST" && (pathname === "/api/ai/chat" || pathname === "/api/v1/ai/chat")) {
+    const body = await parseBody(req);
+    const userMessage = String(body.message || "").trim();
+    let conversationId = body.conversation_id ? String(body.conversation_id) : `conv_${Date.now()}`;
+    const userId = body.user_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+
+    if (!userMessage) {
+      return sendJson(res, 400, { ok: false, error: "Nội dung câu hỏi không được để trống." });
+    }
+
+    const availableServices = (db ? db.services : []).filter((s) => s.is_active);
+    const availableProviders = (db ? db.provider_public_profiles : []).filter((p) => p.verification_status === "verified");
+
+    const qLower = userMessage.toLowerCase();
+    let reply = "";
+    let recommendedServices = [];
+    let recommendedProviders = [];
+    let suggestions = [];
+
+    if (qLower.includes("dọn dẹp") || qLower.includes("lau nhà") || qLower.includes("quét") || qLower.includes("vệ sinh") || qLower.includes("nhà bẩn") || qLower.includes("bụi") || qLower.includes("tết")) {
+      recommendedServices = availableServices.filter((s) => s.title.toLowerCase().includes("dọn dẹp") || s.title.toLowerCase().includes("vệ sinh") || s.title.toLowerCase().includes("tổng"));
+      recommendedProviders = availableProviders.filter((p) => p.info.toLowerCase().includes("dọn dẹp") || p.info.toLowerCase().includes("vệ sinh")).slice(0, 2);
+      reply = `Chào bạn! Để không gian sống luôn tinh tươm và sạch bóng, Gia Đình Xanh gợi ý bạn dịch vụ **Dọn dẹp nhà theo giờ** (từ 75.000đ/giờ) hoặc **Tổng vệ sinh căn hộ chuyên sâu** (từ 180.000đ/lần). \n\n✨ **Cam kết chất lượng:** Thợ mang sẵn dụng cụ chuyên dụng, có lý lịch tư pháp rõ ràng, và được bảo hiểm tài sản lên đến 10 triệu đồng. Bạn có thể bấm chọn ngay gói dịch vụ bên dưới để đặt lịch thuận tiện!`;
+      suggestions = ["Dọn dẹp 2 giờ", "Tổng vệ sinh căn hộ", "Tìm thợ dọn nhà 5 sao", "Xem bảng giá chi tiết"];
+    } else if (qLower.includes("nấu") || qLower.includes("cơm") || qLower.includes("tiệc") || qLower.includes("ăn") || qLower.includes("món")) {
+      recommendedServices = availableServices.filter((s) => s.title.toLowerCase().includes("nấu") || s.title.toLowerCase().includes("bếp"));
+      recommendedProviders = availableProviders.filter((p) => p.info.toLowerCase().includes("nấu")).slice(0, 2);
+      reply = `Dạ chào bạn! Nếu bạn cần chuẩn bị bữa cơm gia đình nóng hổi chuẩn vị hoặc chuẩn bị mâm cỗ đãi khách cuối tuần, dịch vụ **Nấu ăn gia đình theo giờ** (chỉ 60.000đ/giờ) và **Đầu bếp gia đình** là lựa chọn tuyệt vời. \n\n🍲 Đầu bếp đối tác của Gia Đình Xanh có chứng nhận vệ sinh an toàn thực phẩm, có thể hỗ trợ đi chợ theo thực đơn yêu cầu của gia đình.`;
+      suggestions = ["Nấu ăn 3 món gia đình", "Chuẩn bị tiệc nhỏ cuối tuần", "Thợ Mai Lan nấu ăn", "Bảng giá nấu ăn"];
+    } else if (qLower.includes("máy lạnh") || qLower.includes("điều hòa")) {
+      recommendedServices = availableServices.filter((s) => s.title.toLowerCase().includes("máy lạnh") || s.title.toLowerCase().includes("điều hòa"));
+      recommendedProviders = availableProviders.filter((p) => p.info.toLowerCase().includes("máy lạnh") || p.info.toLowerCase().includes("điện")).slice(0, 2);
+      reply = `Dạ chào bạn! Để máy lạnh mát sâu, tiết kiệm điện và lọc sạch không khí, bạn nên vệ sinh định kỳ 3-4 tháng/lần. Gia Đình Xanh cung cấp gói **Vệ sinh máy lạnh treo tường** trọn gói chỉ 250.000đ/máy (bao gồm kiểm tra gas, vệ sinh dàn lạnh và dàn nóng).`;
+      suggestions = ["Vệ sinh 1 bộ máy lạnh", "Vệ sinh 2 máy lạnh", "Bảo hành gas máy lạnh", "Đặt lịch thợ ngay"];
+    } else if (qLower.includes("sofa") || qLower.includes("nệm") || qLower.includes("thảm") || qLower.includes("rèm")) {
+      recommendedServices = availableServices.filter((s) => s.title.toLowerCase().includes("sofa") || s.title.toLowerCase().includes("nệm"));
+      reply = `Chào bạn! Dịch vụ **Giặt ghế Sofa & Đệm ngủ bằng hơi nước nóng** của Gia Đình Xanh diệt khuẩn đến 99% mạt bụi và vi khuẩn gây dị ứng, sử dụng dung dịch sinh học an toàn cho trẻ nhỏ và thú cưng. Bạn có thể bấm đặt lịch ngay dưới đây!`;
+      suggestions = ["Giặt bộ Sofa phòng khách", "Giặt nệm cao su 1m8", "Quy trình giặt hơi nước", "Xem giá trọn gói"];
+    } else if (qLower.includes("giá") || qLower.includes("bảng giá") || qLower.includes("chi phí") || qLower.includes("bao nhiêu tiền")) {
+      reply = `Bảng giá niêm yết minh bạch của Gia Đình Xanh:\n- 🧹 **Dọn dẹp nhà theo giờ**: 75.000 đ/giờ\n- 🍲 **Nấu ăn gia đình**: 60.000 đ/giờ\n- 🏠 **Tổng vệ sinh căn hộ**: 180.000 đ/lần\n- ❄️ **Vệ sinh máy lạnh**: 250.000 đ/bộ\n- 🛋️ **Giặt Sofa - Nệm hơi nước nóng**: từ 350.000 đ/bộ\n\nToàn bộ giá đã bao gồm dụng cụ, cam kết không phát sinh vô lý. Mọi chi phí phát sinh (nếu có) đều phải được khách hàng xác nhận trước qua hệ thống.`;
+      recommendedServices = availableServices.slice(0, 3);
+      suggestions = ["Đặt dọn dẹp nhà", "Đặt nấu ăn gia đình", "Chính sách thanh toán VietQR", "Chính sách bảo hành"];
+    } else if (qLower.includes("bảo hành") || qLower.includes("hủy") || qLower.includes("đền bù") || qLower.includes("khiếu nại")) {
+      reply = `Chính sách an tâm tuyệt đối tại Gia Đình Xanh:\n1. **Đổi thợ miễn phí**: Trong vòng 30 phút đầu nếu bạn thấy không hài lòng về phong cách làm việc của thợ.\n2. **Bảo hiểm tài sản**: Bồi thường lên đến 10.000.000 đ cho trường hợp xảy ra hư hại đổ vỡ có xác nhận.\n3. **Hủy đơn linh hoạt**: Miễn phí hủy đơn hoàn toàn trước giờ hẹn 2 tiếng.\n4. **Kênh hỗ trợ 24/7**: Mở phiếu khiếu nại trực tiếp tại mục Hỗ trợ để Admin giải quyết trong 15 phút.`;
+      suggestions = ["Mở phiếu hỗ trợ", "Đọc quy chế dịch vụ", "Cách liên hệ hotline", "Đặt lịch ngay"];
+    } else {
+      recommendedServices = availableServices.slice(0, 2);
+      recommendedProviders = availableProviders.slice(0, 2);
+      reply = `Xin chào! Tôi là Trợ lý AI của Gia Đình Xanh. Tôi có thể giúp bạn:\n• Tư vấn gói dịch vụ phù hợp (Dọn dẹp, Nấu ăn, Vệ sinh máy lạnh, Giặt sofa).\n• Dự toán chi phí và tra cứu bảng giá niêm yết.\n• Tìm đối tác thợ được đánh giá cao nhất gần khu vực của bạn.\n• Giải đáp chính sách bảo hành, hoàn tiền và bảo hiểm tài sản.\n\nBạn đang cần hỗ trợ dịch vụ nào hôm nay?`;
+      suggestions = ["Tư vấn dọn nhà theo giờ", "Tìm thợ nấu ăn gia đình", "Xem bảng giá dịch vụ", "Chính sách bảo hiểm"];
+    }
+
+    const nowIso = new Date().toISOString();
+    const userMsgId = Date.now();
+    const botMsgId = Date.now() + 1;
+
+    if (isProd && client) {
+      try {
+        await client.from("ai_conversations").upsert([{
+          conversation_id: conversationId,
+          user_id: userId,
+          title: userMessage.slice(0, 40),
+          last_message_at: nowIso
+        }]);
+        await client.from("ai_messages").insert([
+          { conversation_id: conversationId, role: "user", content: userMessage, created_at: nowIso },
+          { conversation_id: conversationId, role: "assistant", content: reply, created_at: new Date(Date.now() + 200).toISOString() }
+        ]);
+      } catch (e) {
+        console.warn("[AI Prod Save Warning]", e.message);
+      }
+    } else if (db) {
+      if (!Array.isArray(db.ai_conversations)) db.ai_conversations = [];
+      if (!Array.isArray(db.ai_messages)) db.ai_messages = [];
+
+      let conv = db.ai_conversations.find((c) => c.conversation_id === conversationId);
+      if (!conv) {
+        conv = {
+          conversation_id: conversationId,
+          user_id: userId,
+          title: userMessage.slice(0, 40),
+          created_at: nowIso,
+          last_message_at: nowIso
+        };
+        db.ai_conversations.push(conv);
+      } else {
+        conv.last_message_at = nowIso;
+      }
+
+      db.ai_messages.push({
+        message_id: userMsgId,
+        conversation_id: conversationId,
+        role: "user",
+        content: userMessage,
+        created_at: nowIso
+      });
+      db.ai_messages.push({
+        message_id: botMsgId,
+        conversation_id: conversationId,
+        role: "assistant",
+        content: reply,
+        created_at: new Date(Date.now() + 200).toISOString()
+      });
+      saveLocalDb(db);
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      conversation_id: conversationId,
+      reply,
+      suggestions,
+      recommended_services: recommendedServices,
+      recommended_providers: recommendedProviders
+    });
+  }
+
+  // 4.19b. Lịch sử hội thoại AI: GET /api/ai/history
+  if (method === "GET" && pathname === "/api/ai/history") {
+    const convId = searchParams.get("conversation_id");
+    if (!convId) return sendJson(res, 400, { ok: false, error: "conversation_id là bắt buộc." });
+    if (isProd && client) {
+      const { data: msgs } = await client.from("ai_messages").select("*").eq("conversation_id", convId).order("created_at", { ascending: true });
+      return sendJson(res, 200, { ok: true, messages: msgs || [] });
+    }
+    const msgs = (db.ai_messages || []).filter((m) => m.conversation_id === convId);
+    return sendJson(res, 200, { ok: true, messages: msgs });
+  }
+
+  // 4.20. Tự động hủy đơn quá 24h: POST /api/rpc/auto-expire (FR-BOOK-007)
+  if (method === "POST" && pathname === "/api/rpc/auto-expire") {
+    const expiredCount = await autoExpirePendingBookings(db, isProd, client);
+    return sendJson(res, 200, {
+      ok: true,
+      message: `Đã kiểm tra và tự động hủy ${expiredCount} đơn hàng pending quá 24h.`,
+      expired_count: expiredCount
+    });
   }
 
   return sendJson(res, 404, { ok: false, error: `Endpoint không tồn tại: ${method} ${pathname}` });
@@ -1751,6 +2940,19 @@ const { port, env } = loadEnvConfig();
 if (env !== "production") {
   ensureLocalDb();
 }
+
+// Background Cron Job: Tự động hủy đơn hàng pending quá 24h (FR-BOOK-007)
+setInterval(() => {
+  try {
+    const isProd = env === "production";
+    const db = isProd ? null : ensureLocalDb();
+    const { client } = getSupabaseClient();
+    autoExpirePendingBookings(db, isProd, client);
+  } catch (err) {
+    console.warn("[Background Auto-Expire Cron Warning]", err.message);
+  }
+}, 60 * 1000);
+
 server.listen(port, "0.0.0.0", () => {
   console.log(`[Gia Đình Xanh Server] Đang chạy tại http://localhost:${port} (Môi trường: ${env})`);
 });

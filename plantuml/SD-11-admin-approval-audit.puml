@@ -1,0 +1,120 @@
+@startuml SD-11-admin-approval-audit
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-11: Admin Phê duyệt Provider, Kiểm duyệt Nội dung & Ghi Nhật ký Kiểm toán (Audit Log)\n(Gộp FR-ADMIN-003, FR-ADMIN-004, FR-ADMIN-007, FR-ADMIN-009, FR-REV-005 & FR-SVC-03)
+
+actor "Admin\n(Quản trị viên)" as Admin #FEF08A
+boundary "Web UI\n(Admin Portal)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+participant "Notification Service\n(In-app / Realtime)" as Notif #E0F2FE
+
+== Nhánh 1: Phê duyệt Hồ sơ Đối tác Thợ & Kích hoạt Tài khoản (FR-ADMIN-003) ==
+
+Admin -> UI: 1a. Xem danh sách hồ sơ thợ chờ duyệt (verification_status = 'pending'):\nKiểm tra ảnh CCCD, tiểu sử và kinh nghiệm
+activate Admin
+activate UI
+
+Admin -> UI: 2a. Nhấn "Phê duyệt đối tác" (Approve Provider)
+UI -> API: 3a. PATCH /api/admin/providers/:id/verify\n{ action: 'approve' }
+activate API
+
+API -> API: 4a. Xác thực quyền Admin (RBAC: req.user.role === 'admin')
+
+group Transaction: Phê duyệt Provider & Ghi Audit Log
+    API -> DB: 5a. Bắt đầu Transaction
+    activate DB
+    
+    API -> DB: 6a. UPDATE provider_profiles\nSET verification_status = 'verified', updated_at = NOW()\nWHERE provider_id = :provider_id\nRETURNING user_id
+    DB --> API: 7a. provider_profiles updated, trả về user_id
+    
+    API -> DB: 8a. UPDATE users\nSET is_active = true, updated_at = NOW()\nWHERE user_id = :user_id
+    DB --> API: 9a. users updated (is_active = true)
+    
+    note over API, DB
+        <b>FR-ADMIN-009: Ghi nhận Nhật ký Kiểm toán (Audit Log)</b>
+        Mọi thao tác quản trị viên bắt buộc phải lưu vết không thể xóa sửa
+    end note
+    
+    API -> DB: 10a. INSERT INTO audit_logs (\n  actor_id, action, target_entity, target_id, details\n) VALUES (\n  :admin_id, 'APPROVE_PROVIDER', 'provider_profiles', :provider_id,\n  'Đã đối soát CCCD hợp lệ và kích hoạt tài khoản thợ'\n)
+    DB --> API: 11a. Audit log recorded
+    
+    API -> DB: 12a. COMMIT TRANSACTION
+    DB --> API: 13a. Commit thành công
+    deactivate DB
+    
+    API -> Notif: 14a. Bắn thông báo chúc mừng đến Thợ (FR-NOT-001)\n"Hồ sơ đối tác của bạn đã được phê duyệt! Bạn có thể bắt đầu nhận việc."
+    activate Notif
+    Notif --> API: 15a. Dispatched
+    deactivate Notif
+    
+    API --> UI: 16a. HTTP 200 OK { ok: true, status: 'verified' }
+    deactivate API
+    UI --> Admin: 17a. Cập nhật bảng dữ liệu: Thợ chuyển sang trạng thái "Đã duyệt"
+end
+
+== Nhánh 2: Kiểm duyệt Ẩn Đánh giá vi phạm & Tái tính Điểm Thợ (FR-REV-005) ==
+
+Admin -> UI: 18b. Phát hiện Đánh giá chứa từ ngữ xúc phạm / spam -> Nhấn "Ẩn đánh giá"
+UI -> API: 19b. PATCH /api/admin/reviews/:id/moderation\n{ is_visible: false, reason: "Ngôn từ thù địch, vi phạm quy tắc cộng đồng" }
+activate API
+
+group Transaction: Ẩn Review, Tính lại Điểm & Ghi Audit Log
+    API -> DB: 20b. Bắt đầu Transaction
+    activate DB
+    
+    API -> DB: 21b. UPDATE reviews\nSET is_visible = false, updated_at = NOW()\nWHERE review_id = :review_id\nRETURNING provider_id
+    DB --> API: 22b. Review hidden, trả về provider_id
+    
+    note over API, DB
+        Tái tính toán lại Điểm trung bình và Tổng review sau khi loại bỏ review bị ẩn
+    end note
+    
+    API -> DB: 23b. SELECT ROUND(AVG(rating)::numeric, 1) as avg_rating, COUNT(review_id) as total_rev\nFROM reviews WHERE provider_id = :provider_id AND is_visible = true
+    DB --> API: 24b. Điểm số mới sau kiểm duyệt
+    
+    API -> DB: 25b. UPDATE provider_profiles\nSET average_rating = COALESCE(:avg_rating, 5.0), total_reviews = :total_rev\nWHERE provider_id = :provider_id
+    DB --> API: 26b. Điểm của thợ đã được cập nhật chuẩn xác
+    
+    API -> DB: 27b. INSERT INTO audit_logs (\n  actor_id, action, target_entity, target_id, details\n) VALUES (\n  :admin_id, 'MODERATE_REVIEW_HIDE', 'reviews', :review_id,\n  'Ẩn đánh giá vi phạm thuần phong mỹ tục'\n)
+    DB --> API: 28b. Audit log recorded
+    
+    API -> DB: 29b. COMMIT TRANSACTION
+    DB --> API: 30b. Commit OK
+    deactivate DB
+    
+    API --> UI: 31b. HTTP 200 OK { ok: true, is_visible: false }
+    deactivate API
+    UI --> Admin: 32b. Hiển thị nhãn "[Đã ẩn bởi Admin]" trên danh sách đánh giá
+end
+
+== Nhánh 3: Admin Định giá Dịch vụ Tập trung (FR-SVC-03) ==
+
+Admin -> UI: 33c. Điều chỉnh giá niêm yết dịch vụ: Dịch vụ Sửa vòi nước từ 100.000đ -> 120.000đ
+UI -> API: 34c. PUT /api/admin/services/:id\n{ base_price: 120000, pricing_type: 'fixed' }
+activate API
+
+API -> DB: 35c. UPDATE services SET base_price = 120000, pricing_type = 'fixed', updated_at = NOW() WHERE service_id = :id
+activate DB
+DB --> API: 36c. Service updated
+
+API -> DB: 37c. INSERT INTO audit_logs (actor_id, action, target_entity, target_id, details)\nVALUES (:admin_id, 'UPDATE_SERVICE_PRICE', 'services', :id, 'Thay đổi giá niêm yết: 100.000đ -> 120.000đ')
+DB --> API: 38c. Audit log saved
+deactivate DB
+
+API --> UI: 39c. HTTP 200 OK { ok: true, base_price: 120000 }
+deactivate API
+UI --> Admin: 40c. Thông báo "Cập nhật giá dịch vụ thành công."
+deactivate UI
+deactivate Admin
+
+@enduml

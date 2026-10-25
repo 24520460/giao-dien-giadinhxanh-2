@@ -1,0 +1,111 @@
+@startuml SD-07-complete-service
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-07: Thực hiện, Hoàn tất dịch vụ (Nhập phí phát sinh) & Cập nhật Thanh toán\n(Gộp FR-BOOK-05, FR-BOOK-06, FR-BOOK-07, FR-BOOK-09 & FR-NOT-001)
+
+actor "Provider\n(Đối tác Thợ)" as Prov #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+participant "Notification Service\n(In-app / Realtime)" as Notif #E0F2FE
+
+== Giai đoạn 1: Bắt đầu Thực hiện Dịch vụ (FR-BOOK-05) ==
+
+Prov -> UI: 1. Có mặt tại địa chỉ khách hàng & Nhấn "Bắt đầu làm việc"
+activate Prov
+activate UI
+
+UI -> API: 2. PATCH /api/bookings/:id/status\n{ status: 'in_progress' }
+activate API
+
+API -> DB: 3. SELECT booking_id, booking_status, customer_id\nFROM bookings WHERE booking_id = :id AND provider_id = :provider_id
+activate DB
+DB --> API: 4. Record info
+
+alt Trạng thái hiện tại khác 'confirmed'
+    API --> UI: 5a. HTTP 400 Bad Request\n{ ok: false, error: "Đơn phải ở trạng thái đã xác nhận (confirmed) để bắt đầu." }
+    UI --> Prov: 6a. Báo lỗi không hợp lệ
+else Đơn đang ở trạng thái 'confirmed'
+    API -> DB: 7. UPDATE bookings SET booking_status = 'in_progress', updated_at = NOW() WHERE booking_id = :id
+    DB --> API: 8. Updated to 'in_progress'
+    
+    API -> DB: 9. INSERT INTO booking_status_history\n(booking_id, from_status, to_status, changed_by, notes)\nVALUES (:id, 'confirmed', 'in_progress', :provider_user_id, 'Thợ bắt đầu tiến hành công việc')
+    DB --> API: 10. History recorded
+    deactivate DB
+    
+    API -> Notif: 11. Gửi thông báo đến Khách hàng\n"Thợ đã bắt đầu thực hiện dịch vụ tại nhà bạn."
+    activate Notif
+    Notif --> API: 12. Dispatched
+    deactivate Notif
+    
+    API --> UI: 13. HTTP 200 OK { ok: true, booking_status: 'in_progress' }
+    deactivate API
+    UI --> Prov: 14. Hiển thị trạng thái "Đang thực hiện" & Đồng hồ đếm thời gian
+end
+
+== Giai đoạn 2: Hoàn tất dịch vụ, Khai báo phụ phí & Thu tiền (FR-BOOK-06 & FR-BOOK-09) ==
+
+Prov -> UI: 15. Nhấn "Hoàn tất dịch vụ": Nhập phụ phí vật tư phát sinh (total_incidental >= 0) và ghi chú vật tư
+UI -> UI: 16. Client validation: Kiểm tra total_incidental >= 0
+
+UI -> API: 17. PATCH /api/bookings/:id/complete\n{ total_incidental: 50000, incidental_notes: "Thay gioăng cao su vòi nước" }
+activate API
+
+group Transaction: Hoàn tất đơn & Quyết toán chi phí
+    API -> DB: 18. Bắt đầu Transaction
+    activate DB
+    
+    API -> DB: 19. SELECT booking_id, booking_status, total_amount, customer_id\nFROM bookings WHERE booking_id = :id AND provider_id = :provider_id FOR UPDATE
+    DB --> API: 20. Current booking data (total_amount = base_price, status = 'in_progress')
+    
+    alt Trạng thái khác 'in_progress'
+        API -> DB: 21a. ROLLBACK
+        API --> UI: 21b. HTTP 400 Bad Request { ok: false, error: "Đơn chưa bắt đầu hoặc đã kết thúc." }
+        UI --> Prov: 21c. Báo lỗi trạng thái không hợp lệ
+    else Đang ở 'in_progress'
+        note over API, DB
+            <b>FR-BOOK-09: Tính tổng tiền cuối cùng & Cập nhật thanh toán</b>
+            final_total = snapshot_base_price + total_incidental
+            Cập nhật trạng thái: booking_status = 'completed', payment_status = 'paid'
+        end note
+        
+        API -> API: 22. final_amount = current_total_amount + total_incidental
+        
+        API -> DB: 23. UPDATE bookings\nSET booking_status = 'completed',\n    total_amount = :final_amount,\n    payment_status = 'paid',\n    updated_at = NOW()\nWHERE booking_id = :id
+        DB --> API: 24. Booking updated (completed, paid)
+        
+        API -> DB: 25. INSERT INTO booking_status_history\n(booking_id, from_status, to_status, changed_by, notes)\nVALUES (:id, 'in_progress', 'completed', :provider_user_id,\n'Hoàn tất dịch vụ. Phụ phí: 50.000đ. Đã thu tiền mặt.')
+        DB --> API: 26. History recorded
+        
+        API -> DB: 27. COMMIT TRANSACTION
+        DB --> API: 28. Transaction committed
+        deactivate DB
+        
+        note over API, Notif
+            <b>FR-NOT-001: Thông báo hoàn tất & Kêu gọi Khách hàng đánh giá</b>
+        end note
+        
+        API -> Notif: 29. Bắn thông báo đến Khách hàng\n{ recipient_id: customer_id, title: "Dịch vụ đã hoàn tất",\n  content: "Đơn hàng #ID đã hoàn thành (Tổng tiền: :final_amount đ). Hãy đánh giá chất lượng thợ nhé!", booking_id: :id }
+        activate Notif
+        Notif --> API: 30. Dispatched
+        deactivate Notif
+        
+        API --> UI: 31. HTTP 200 OK\n{ ok: true, booking_status: 'completed', payment_status: 'paid', total_amount: :final_amount }
+        deactivate API
+        
+        UI --> Prov: 32. Hiển thị màn hình "Hoàn tất thành công", xuất hóa đơn điện tử / biên lai thu tiền
+        deactivate UI
+    end
+end
+deactivate Prov
+
+@enduml

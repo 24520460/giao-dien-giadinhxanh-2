@@ -1,0 +1,83 @@
+@startuml SD-02-login-rbac
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-02: Đăng nhập & Điều hướng Phân quyền theo Role / Trạng thái\n(Gộp FR-AUTH-03 & FR-AUTH-06)
+
+actor "User\n(Customer/Provider/Admin)" as User #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+participant "Supabase Auth\n(GoTrue Service)" as Auth #E0F2FE
+database "PostgreSQL\n(users table)" as DB #F1F3F5
+
+User -> UI: 1. Nhập thông tin đăng nhập:\nEmail và Mật khẩu
+activate User
+activate UI
+
+UI -> UI: 2. Validate client sơ bộ (Email format, mật khẩu không rỗng)
+
+UI -> API: 3. POST /api/auth/login\n{ email, password }
+activate API
+
+API -> Auth: 4. signInWithPassword({ email, password })
+activate Auth
+
+alt Thông tin xác thực không đúng (Invalid Credentials)
+    Auth --> API: 5a. Trả về Auth Error (400 Invalid login credentials)
+    API --> UI: 5b. HTTP 401 Unauthorized\n{ ok: false, error: "Email hoặc mật khẩu không chính xác." }
+    UI --> User: 5c. Hiển thị thông báo sai thông tin đăng nhập
+else Xác thực Auth thành công
+    Auth --> API: 6. Trả về Session Token & Auth User { id: auth_uid, email }
+    deactivate Auth
+    
+    note over API, DB
+        <b>FR-AUTH-06: RBAC & Data Integrity</b>
+        Không bao giờ tin cậy Role từ Client hoặc metadata người dùng.
+        Bắt buộc truy vấn Role và Trạng thái (is_active) trực tiếp từ database PostgreSQL.
+    end note
+    
+    API -> DB: 7. SELECT user_id, full_name, phone_number, role, is_active\nFROM users WHERE user_id = :auth_uid
+    activate DB
+    DB --> API: 8. Trả về User Profile Record
+    deactivate DB
+    
+    alt Tài khoản không tồn tại trong DB users (Inconsistent State)
+        API --> UI: 9a. HTTP 404 Not Found\n{ ok: false, error: "Hồ sơ người dùng không tồn tại." }
+        UI --> User: 9b. Yêu cầu liên hệ bộ phận hỗ trợ
+    else Tài khoản bị Khóa hoặc Vô hiệu hóa (is_active = false)
+        API -> Auth: 10a. admin.signOut(session_token) [Thu hồi phiên tức thì]
+        API --> UI: 10b. HTTP 403 Forbidden\n{ ok: false, code: "ACCOUNT_SUSPENDED",\n  error: "Tài khoản của bạn đã bị tạm khóa hoặc đang chờ kích hoạt." }
+        UI --> User: 10c. Chặn truy cập & thông báo tài khoản bị vô hiệu hóa
+    else Tài khoản Hoạt động bình thường (is_active = true)
+        API -> API: 11. Tạo Application JWT / Session Cookie\n(chứa user_id, role, full_name)
+        
+        API --> UI: 12. HTTP 200 OK\n{ ok: true, token, user: { user_id, email, full_name, role } }
+        deactivate API
+        
+        note over UI
+            <b>Điều hướng giao diện theo Role phân quyền</b>
+        end note
+        
+        alt role == 'admin'
+            UI -> UI: 13a. Lưu session & Chuyển hướng đến Admin Portal (/admin-dashboard)
+        else role == 'provider'
+            UI -> UI: 13b. Lưu session & Chuyển hướng đến Provider Portal (/provider-schedule)
+        else role == 'customer'
+            UI -> UI: 13c. Lưu session & Chuyển hướng đến Khách hàng Portal (/home)
+        end
+        
+        UI --> User: 14. Hiển thị Dashboard tương ứng với đầy đủ quyền hạn
+        deactivate UI
+    end
+end
+deactivate User
+
+@enduml

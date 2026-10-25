@@ -562,6 +562,24 @@
         created_at: '2026-10-14T11:20:00+07:00',
         updated_at: '2026-10-15T12:00:00+07:00',
       },
+      {
+        booking_id: 1036,
+        customer_id: 101,
+        provider_id: 204,
+        service_id: 301,
+        scheduled_time: '2026-10-10T09:00:00+07:00',
+        address: 'Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng',
+        ward_id: '27403',
+        latitude: 10.728912,
+        longitude: 106.712405,
+        total_incidental: 0,
+        total_amount: 180000,
+        status: 'auto_cancelled',
+        payment_status: 'unpaid',
+        notes: 'Đơn yêu cầu hỗ trợ dọn dẹp nhà (Hệ thống tự động hủy sau 24h không có thợ nhận).',
+        created_at: '2026-10-09T08:00:00+07:00',
+        updated_at: '2026-10-10T08:00:00+07:00',
+      },
     ];
 
     // -------------------------------------------------------------------
@@ -622,10 +640,19 @@
         reason: '[ADMIN ADJUSTMENT] TT Thanh toán: paid -> refunded | Tổng tiền: 380.000 đ | Lý do: Cập nhật trạng thái hoàn tiền do lịch hẹn hủy trước giờ làm',
         created_at: '2026-10-22T07:30:00+07:00',
       },
+      {
+        history_id: 5007,
+        booking_id: 1036,
+        previous_status: 'pending',
+        new_status: 'auto_cancelled',
+        changed_by: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+        reason: 'Hệ thống tự động hủy đơn sau 24 giờ không có đối tác nhận việc',
+        created_at: '2026-10-10T08:00:00+07:00',
+      },
     ];
 
     // -------------------------------------------------------------------
-    // 12. reviews (review_id BIGINT, booking_id UNIQUE, customer_id, provider_id, rating 1..5, comment, created_at)
+    // 12. reviews (review_id BIGINT, booking_id UNIQUE, customer_id, provider_id, rating 1..5, comment, status, moderation_reason, created_at, updated_at)
     // -------------------------------------------------------------------
     const reviews = [
       {
@@ -635,7 +662,10 @@
         provider_id: 203,
         rating: 5,
         comment: 'Chị Thu Hà đến đúng giờ, sơ chế sạch sẽ và nấu các món gia đình vừa miệng. Khu vực bếp được lau dọn gọn gàng sau khi nấu xong.',
+        status: 'published',
+        moderation_reason: null,
         created_at: '2026-10-20T20:10:00+07:00',
+        updated_at: '2026-10-20T20:10:00+07:00',
       },
       {
         review_id: 802,
@@ -644,7 +674,10 @@
         provider_id: 201,
         rating: 5,
         comment: 'Chị Mai Lan làm việc rất tỉ mỉ, lau sạch toàn bộ kệ sách, ban công và sắp xếp lại đồ đạc phòng khách rất ngăn nắp.',
+        status: 'published',
+        moderation_reason: null,
         created_at: '2026-10-15T14:20:00+07:00',
+        updated_at: '2026-10-15T14:20:00+07:00',
       },
       {
         review_id: 803,
@@ -653,17 +686,21 @@
         provider_id: 202,
         rating: 5,
         comment: 'Anh Hoàng Tuấn mang đầy đủ bạt che nước và máy xịt áp lực, vệ sinh 2 máy lạnh rất kỹ, không làm bắn nước ra sàn gỗ.',
+        status: 'published',
+        moderation_reason: null,
         created_at: '2026-10-18T17:30:00+07:00',
+        updated_at: '2026-10-18T17:30:00+07:00',
       },
     ];
 
     // -------------------------------------------------------------------
-    // 13. favorites (favorite_id BIGINT, customer_id, service_id, created_at)
+    // 13. favorites (favorite_id BIGINT, customer_id, service_id, provider_id, created_at)
     // -------------------------------------------------------------------
     const favorites = [
-      { favorite_id: 901, customer_id: 101, service_id: 301, created_at: '2026-09-10T10:00:00+07:00' },
-      { favorite_id: 902, customer_id: 101, service_id: 302, created_at: '2026-09-14T16:20:00+07:00' },
-      { favorite_id: 903, customer_id: 101, service_id: 303, created_at: '2026-10-02T09:15:00+07:00' },
+      { favorite_id: 901, customer_id: 101, service_id: 301, provider_id: null, created_at: '2026-09-10T10:00:00+07:00' },
+      { favorite_id: 902, customer_id: 101, service_id: 302, provider_id: null, created_at: '2026-09-14T16:20:00+07:00' },
+      { favorite_id: 903, customer_id: 101, service_id: 303, provider_id: null, created_at: '2026-10-02T09:15:00+07:00' },
+      { favorite_id: 904, customer_id: 101, service_id: null, provider_id: 201, created_at: '2026-10-21T08:00:00+07:00' },
     ];
 
     // -------------------------------------------------------------------
@@ -699,6 +736,189 @@
         priority: 'urgent',
         created_at: '2026-10-22T07:18:00+07:00',
         updated_at: '2026-10-22T07:35:00+07:00',
+      },
+    ];
+
+    // -------------------------------------------------------------------
+    // 17. customer_addresses (address_id, customer_id, label, recipient_name, phone, street_address, ward_id, is_default)
+    // -------------------------------------------------------------------
+    const customer_addresses = [
+      {
+        address_id: 'd101-addr-1',
+        customer_id: 101,
+        label: 'Nhà riêng',
+        recipient_name: 'Nguyễn Minh Thảo',
+        phone: '0908341289',
+        street_address: 'Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng',
+        ward_id: '27403',
+        latitude: 10.728912,
+        longitude: 106.712405,
+        is_default: true,
+        created_at: '2026-08-12T08:16:00+07:00',
+        updated_at: '2026-10-20T09:10:00+07:00',
+      },
+      {
+        address_id: 'd101-addr-2',
+        customer_id: 101,
+        label: 'Văn phòng',
+        recipient_name: 'Nguyễn Minh Thảo',
+        phone: '0908341289',
+        street_address: 'Tòa nhà Saigon Centre, 65 Lê Lợi, Bến Nghé, Quận 1',
+        ward_id: '26734',
+        latitude: 10.773821,
+        longitude: 106.700412,
+        is_default: false,
+        created_at: '2026-09-01T10:00:00+07:00',
+        updated_at: '2026-09-01T10:00:00+07:00',
+      },
+      {
+        address_id: 'd102-addr-1',
+        customer_id: 102,
+        label: 'Căn hộ chung cư',
+        recipient_name: 'Trần Quốc Bảo',
+        phone: '0912883401',
+        street_address: 'Căn hộ T2-1804, Chung cư Thảo Điền, 159 Xa Lộ Hà Nội',
+        ward_id: '27088',
+        latitude: 10.802145,
+        longitude: 106.742118,
+        is_default: true,
+        created_at: '2026-09-01T14:25:00+07:00',
+        updated_at: '2026-10-18T11:05:00+07:00',
+      },
+    ];
+
+    // -------------------------------------------------------------------
+    // 18. ticket_messages (message_id, ticket_id, sender_id, message_body, visibility, created_at)
+    // -------------------------------------------------------------------
+    const ticket_messages = [
+      {
+        message_id: 7001,
+        ticket_id: 701,
+        sender_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        message_body: 'Chào ban quản trị, hóa đơn đơn #1042 thợ có kê khai phụ phí 50.000đ nhưng tôi thấy trong ứng dụng tính tổng 230.000đ, nhờ kiểm tra giúp tôi hóa đơn mua vật tư.',
+        visibility: 'public',
+        created_at: '2026-10-23T14:40:00+07:00',
+      },
+      {
+        message_id: 7002,
+        ticket_id: 701,
+        sender_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+        message_body: 'Ghi chú kiểm tra nội bộ: Đã đối soát phiếu thu vật tư van khóa của thợ Lê Hoàng Tuấn, phụ phí hợp lệ.',
+        visibility: 'internal',
+        created_at: '2026-10-23T15:00:00+07:00',
+      },
+      {
+        message_id: 7003,
+        ticket_id: 701,
+        sender_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+        message_body: 'Dạ chào anh Thảo, Ban quản trị đã đối soát hóa đơn vật tư thay van khóa ống nước của đối tác kỹ thuật, chi phí 50.000đ hoàn toàn chính xác theo giá niêm yết.',
+        visibility: 'public',
+        created_at: '2026-10-23T15:15:00+07:00',
+      },
+    ];
+
+    // -------------------------------------------------------------------
+    // 19. notifications (notification_id, user_id, type, title, body, related_entity_type, related_entity_id, is_read, created_at)
+    // -------------------------------------------------------------------
+    const notifications = [
+      {
+        notification_id: 9001,
+        user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        type: 'booking_accepted',
+        title: 'Đối tác đã nhận việc',
+        body: 'Đơn đặt lịch #1043 vệ sinh máy lạnh đã được đối tác Lê Hoàng Tuấn tiếp nhận.',
+        related_entity_type: 'booking',
+        related_entity_id: 1043,
+        is_read: false,
+        created_at: '2026-10-23T08:15:00+07:00',
+      },
+      {
+        notification_id: 9002,
+        user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        type: 'payment_success',
+        title: 'Thanh toán thành công',
+        body: 'Đơn đặt lịch #1039 đã được xác nhận thanh toán qua VietQR.',
+        related_entity_type: 'booking',
+        related_entity_id: 1039,
+        is_read: true,
+        created_at: '2026-10-20T20:05:00+07:00',
+      },
+      {
+        notification_id: 9003,
+        user_id: 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21',
+        type: 'booking_request',
+        title: 'Có yêu cầu đặt lịch mới',
+        body: 'Khách hàng vừa đặt lịch dịch vụ Tổng vệ sinh căn hộ tại Phường Tân Phong, Quận 7.',
+        related_entity_type: 'booking',
+        related_entity_id: 1040,
+        is_read: true,
+        created_at: '2026-10-23T07:45:00+07:00',
+      },
+    ];
+
+    // -------------------------------------------------------------------
+    // 20. audit_logs (audit_id, actor_id, action, entity_type, entity_id, reason, metadata, created_at)
+    // -------------------------------------------------------------------
+    const audit_logs = [
+      {
+        audit_id: 8001,
+        actor_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+        action: 'APPROVE_KYC',
+        entity_type: 'provider_profiles',
+        entity_id: '201',
+        reason: 'Hồ sơ CCCD đối tác Đặng Thị Mai Lan hợp lệ, đã xác minh thực địa',
+        metadata: { verification_status: 'verified' },
+        created_at: '2026-06-12T09:00:00+07:00',
+      },
+      {
+        audit_id: 8002,
+        actor_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+        action: 'SUSPEND_USER',
+        entity_type: 'users',
+        entity_id: 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b25',
+        reason: 'Tạm ngưng tài khoản thợ Ngô Minh Đức do hồ sơ CCCD mờ và không đạt bài kiểm tra chuyên môn',
+        metadata: { is_active: false },
+        created_at: '2026-10-15T15:00:00+07:00',
+      },
+      {
+        audit_id: 8003,
+        actor_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+        action: 'ADJUST_BOOKING',
+        entity_type: 'bookings',
+        entity_id: '1041',
+        reason: 'Admin điều phối duyệt hoàn tiền đơn hàng do khách báo hủy sát giờ vì sự cố bất khả kháng',
+        metadata: { payment_status: 'refunded', status: 'cancelled' },
+        created_at: '2026-10-22T07:30:00+07:00',
+      },
+    ];
+
+    // -------------------------------------------------------------------
+    // 21. ai_conversations & ai_messages (Lịch sử hội thoại Chatbot AI)
+    // -------------------------------------------------------------------
+    const ai_conversations = [
+      {
+        conversation_id: 'a100-conv-001',
+        user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        title: 'Tư vấn dịch vụ dọn nhà đón Tết',
+        created_at: '2026-10-22T09:00:00+07:00',
+        updated_at: '2026-10-22T09:05:00+07:00',
+      },
+    ];
+
+    const ai_messages = [
+      {
+        message_id: 9501,
+        conversation_id: 'a100-conv-001',
+        role: 'user',
+        content: 'Nhà mình 3 phòng ngủ ở Quận 7, cần tổng vệ sinh sâu cuối tuần này thì nên đặt dịch vụ nào?',
+        created_at: '2026-10-22T09:00:00+07:00',
+      },
+      {
+        message_id: 9502,
+        conversation_id: 'a100-conv-001',
+        role: 'assistant',
+        content: 'Chào bạn! Với căn hộ 3 phòng ngủ tại Quận 7, Gia Đình Xanh đề xuất bạn chọn dịch vụ "Tổng vệ sinh căn hộ chuyên sâu (Deep Clean)" thời lượng khoảng 4 giờ với mức giá 360.000đ. Đội ngũ đối tác có chị Mai Lan (4.9 sao) đang hoạt động tại Phường Tân Phong rất phù hợp với nhu cầu của bạn.',
+        created_at: '2026-10-22T09:01:00+07:00',
       },
     ];
 
@@ -753,6 +973,8 @@
       session,
       province,
       ward,
+      provinces: province,
+      wards: ward,
       users,
       customer_profiles,
       provider_profiles,
@@ -767,6 +989,12 @@
       reviews,
       favorites,
       support_tickets,
+      customer_addresses,
+      ticket_messages,
+      notifications,
+      audit_logs,
+      ai_conversations,
+      ai_messages,
       getProviderPublicProfiles,
       get provider_public_profiles() {
         return getProviderPublicProfiles();

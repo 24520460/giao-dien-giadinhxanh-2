@@ -1,0 +1,141 @@
+@startuml SD-06-respond-booking
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-06: Phản hồi Booking (Provider Chấp nhận / Từ chối, Khách Hủy & Tự động hết hạn 24h)\n(Gộp FR-BOOK-03, FR-BOOK-04, FR-BOOK-07, FR-NOT-001 & FR-NOT-004)
+
+actor "Customer\n(Khách hàng)" as Cust #EBF2EE
+actor "Provider\n(Đối tác Thợ)" as Prov #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+entity "Background Worker\n(24h Expiry Cron)" as Cron #FEF08A
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+participant "Notification Service\n(In-app / Realtime)" as Notif #E0F2FE
+
+alt Nhánh 1: Provider Chấp nhận đơn hẹn (FR-BOOK-03)
+    Prov -> UI: 1a. Nhấn nút "Chấp nhận đơn" (Accept Booking)
+    activate Prov
+    activate UI
+    
+    UI -> API: 2a. PATCH /api/bookings/:id/respond\n{ action: 'accept' }
+    activate API
+    
+    note over API, DB
+        <b>Trạng thái hợp lệ duy nhất: 'confirmed' (không dùng accepted)</b>
+        Transaction kiểm tra lại tính sẵn sàng để bảo đảm không xảy ra Race Condition.
+    end note
+    
+    group Transaction: Chấp nhận & Xác nhận Đơn
+        API -> DB: 3a. SELECT booking_id, booking_status, booking_time, customer_id, provider_id\nFROM bookings WHERE booking_id = :id AND provider_id = :provider_id\nFOR UPDATE
+        activate DB
+        DB --> API: 4a. Thông tin đơn hàng hiện tại
+        
+        alt Trạng thái khác 'pending'
+            API -> DB: 5a. ROLLBACK
+            API --> UI: 6a. HTTP 400 Bad Request\n{ ok: false, error: "Đơn không ở trạng thái chờ duyệt." }
+            UI --> Prov: 7a. Báo lỗi đơn đã được xử lý trước đó
+        else Trạng thái là 'pending'
+            API -> DB: 8a. UPDATE bookings\nSET booking_status = 'confirmed', updated_at = NOW()\nWHERE booking_id = :id
+            DB --> API: 9a. Cập nhật booking thành công (status = 'confirmed')
+            
+            API -> DB: 10a. INSERT INTO booking_status_history\n(booking_id, from_status, to_status, changed_by, notes)\nVALUES (:id, 'pending', 'confirmed', :provider_user_id, 'Thợ đã chấp nhận đơn hẹn')
+            DB --> API: 11a. Ghi nhận status history thành công
+            
+            API -> DB: 12a. COMMIT TRANSACTION
+            DB --> API: 13a. Commit OK
+            deactivate DB
+            
+            API -> Notif: 14a. Gửi thông báo đến Khách hàng (FR-NOT-001)\n{ recipient_id: customer_id, title: "Đơn đã được xác nhận",\n  content: "Thợ đã nhận lời hẹn của bạn. Trạng thái: confirmed.", booking_id: :id }
+            activate Notif
+            Notif --> API: 15a. Dispatched
+            deactivate Notif
+            
+            API --> UI: 16a. HTTP 200 OK\n{ ok: true, booking_status: 'confirmed' }
+            deactivate API
+            UI --> Prov: 17a. Cập nhật thẻ đơn sang trạng thái "Đã xác nhận" (Confirmed)
+        end
+    end
+    deactivate UI
+    deactivate Prov
+
+else Nhánh 2: Thợ từ chối HOẶC Khách hủy đơn (FR-BOOK-04)
+    alt Khách chủ động hủy đơn
+        Cust -> UI: 1b. Chọn "Hủy đặt lịch" & Nhập lý do (cancellation_reason)
+        activate Cust
+        activate UI
+        UI -> API: 2b. PATCH /api/bookings/:id/cancel\n{ reason: :cancellation_reason }
+        activate API
+    else Thợ từ chối nhận việc
+        Prov -> UI: 1c. Chọn "Từ chối đơn" & Nhập lý do
+        activate Prov
+        activate UI
+        UI -> API: 2c. PATCH /api/bookings/:id/respond\n{ action: 'reject', reason: :cancellation_reason }
+        activate API
+    end
+    
+    API -> DB: 3b. SELECT booking_status, customer_id, provider_id\nFROM bookings WHERE booking_id = :id FOR UPDATE
+    activate DB
+    DB --> API: 4b. Record found
+    
+    note over API, DB
+        Chỉ cho phép Hủy / Từ chối nếu đơn đang ở trạng thái 'pending' hoặc 'confirmed' (trước giờ làm việc)
+    end note
+    
+    API -> DB: 5b. UPDATE bookings\nSET booking_status = :target_status, cancellation_reason = :reason, updated_at = NOW()\nWHERE booking_id = :id\n(target_status là 'rejected' nếu thợ từ chối, hoặc 'cancelled' nếu khách hủy)
+    DB --> API: 6b. Cập nhật trạng thái thành công
+    
+    API -> DB: 7b. INSERT INTO booking_status_history\n(booking_id, from_status, to_status, changed_by, notes)\nVALUES (:id, :old_status, :target_status, :caller_id, :reason)
+    DB --> API: 8b. Ghi nhận status history
+    deactivate DB
+    
+    API -> Notif: 9b. Gửi thông báo đến bên còn lại thông báo việc hủy/từ chối
+    activate Notif
+    Notif --> API: 10b. Dispatched
+    deactivate Notif
+    
+    API --> UI: 11b. HTTP 200 OK { ok: true, booking_status: :target_status }
+    deactivate API
+    UI --> Cust: 12b. Cập nhật giao diện đơn sang trạng thái Hủy/Từ chối
+    deactivate UI
+    deactivate Cust
+    deactivate Prov
+
+else Nhánh 3: Tự động hết hạn sau 24h (FR-BOOK-07 & FR-NOT-004)
+    activate Cron
+    Cron -> Cron: 1d. Chạy định kỳ mỗi 15 phút (Cron Job)
+    
+    Cron -> API: 2d. Trigger POST /api/cron/expire-pending-bookings\n(Bảo mật bằng Secret CRON_API_KEY)
+    activate API
+    
+    API -> DB: 3d. SELECT booking_id, customer_id, provider_id, created_at\nFROM bookings\nWHERE booking_status = 'pending'\n  AND created_at < NOW() - INTERVAL '24 hours'
+    activate DB
+    DB --> API: 4d. Danh sách các đơn pending đã quá hạn 24 giờ
+    
+    loop Duyệt từng đơn hết hạn
+        API -> DB: 5d. UPDATE bookings\nSET booking_status = 'auto_cancelled',\n    cancellation_reason = 'Hết thời hạn 24h đối tác thợ không phản hồi',\n    updated_at = NOW()\nWHERE booking_id = :booking_id
+        DB --> API: 6d. Status updated to 'auto_cancelled'
+        
+        API -> DB: 7d. INSERT INTO booking_status_history\n(booking_id, from_status, to_status, changed_by, notes)\nVALUES (:booking_id, 'pending', 'auto_cancelled', NULL, 'Hệ thống tự động hủy do quá hạn 24h')
+        DB --> API: 8d. History recorded
+        
+        API -> Notif: 9d. Bắn thông báo cho cả Khách hàng và Thợ (FR-NOT-004)\n"Đơn đặt dịch vụ #ID đã tự động hủy do quá hạn 24 giờ không phản hồi."
+        activate Notif
+        Notif --> API: 10d. Dispatched
+        deactivate Notif
+    end
+    deactivate DB
+    
+    API --> Cron: 11d. HTTP 200 OK { expired_count: N }
+    deactivate API
+    deactivate Cron
+end
+
+@enduml

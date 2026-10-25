@@ -311,7 +311,9 @@ window.GDXApp = (() => {
         'province', 'provinces', 'ward', 'wards', 'users', 'customer_profiles', 'provider_profiles',
         'service_categories', 'services', 'provider_services', 'provider_areas',
         'availability_schedules', 'availability_exceptions', 'bookings',
-        'booking_status_history', 'reviews', 'favorites', 'support_tickets'
+        'booking_status_history', 'reviews', 'favorites', 'support_tickets',
+        'customer_addresses', 'ticket_messages', 'notifications', 'audit_logs',
+        'ai_conversations', 'ai_messages'
       ];
       tables.forEach((t) => {
         if (Array.isArray(remote[t])) {
@@ -396,6 +398,7 @@ window.GDXApp = (() => {
       }
 
       go(state.currentScreen);
+      fetchNotifications();
     }
   }
 
@@ -416,6 +419,17 @@ window.GDXApp = (() => {
     });
   }
 
+  function formatTimeOnly(isoString) {
+    if (!isoString) return '';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function escapeQuotes(str) {
+    return String(str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  }
+
   function formatStatusLabel(st) {
     const map = {
       pending: 'Chờ xác nhận',
@@ -423,6 +437,7 @@ window.GDXApp = (() => {
       in_progress: 'Đang thực hiện',
       completed: 'Hoàn thành',
       cancelled: 'Đã hủy',
+      auto_cancelled: 'Tự động hủy (24h)',
       rejected: 'Từ chối',
       unpaid: 'Chưa thanh toán',
       paid: 'Đã thanh toán',
@@ -633,6 +648,455 @@ window.GDXApp = (() => {
     }, 3600);
   }
 
+  // =====================================================================
+  // IN-APP NOTIFICATIONS MODULE (FR-NOTIF-001)
+  // =====================================================================
+  async function fetchNotifications() {
+    if (!state.activeUserId) return;
+    const res = await apiRequest(`/api/notifications?user_id=${state.activeUserId}`);
+    if (res && res.ok && Array.isArray(res.notifications)) {
+      state.notifications = res.notifications;
+      const unread = state.notifications.filter((n) => !n.is_read).length;
+      state.unreadNotifCount = unread;
+      const badge = document.getElementById('notifBadgeCount');
+      if (badge) {
+        if (unread > 0) {
+          badge.textContent = unread > 9 ? '9+' : String(unread);
+          badge.style.display = 'inline-flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+    }
+  }
+
+  function toggleNotificationsDrawer(forceState) {
+    const drawer = document.getElementById('notificationsDrawer');
+    if (!drawer) return;
+    const isCurrentlyOpen = !drawer.hidden && drawer.style.display !== 'none' && !drawer.classList.contains('is-hidden');
+    const shouldOpen = typeof forceState === 'boolean' ? forceState : !isCurrentlyOpen;
+
+    if (shouldOpen) {
+      renderNotificationsList();
+      drawer.hidden = false;
+      drawer.style.display = 'flex';
+      drawer.classList.remove('is-hidden');
+    } else {
+      drawer.hidden = true;
+      drawer.style.display = 'none';
+      drawer.classList.add('is-hidden');
+    }
+  }
+
+  function closeNotificationsDrawer() {
+    toggleNotificationsDrawer(false);
+  }
+
+  function renderNotificationsList() {
+    const listEl = document.getElementById('notificationsList');
+    if (!listEl) return;
+    const notifs = state.notifications || [];
+    if (notifs.length === 0) {
+      listEl.innerHTML = `
+        <div class="notif-empty">
+          <div style="font-size:24px; margin-bottom:6px;">📭</div>
+          <div>Bạn chưa có thông báo mới nào</div>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = notifs.map((n) => {
+      let icon = '🔔';
+      if (n.type === 'booking_created' || n.type === 'booking_confirmed') icon = '📅';
+      else if (n.type === 'booking_completed') icon = '⭐';
+      else if (n.type === 'booking_cancelled') icon = '❌';
+      else if (n.type === 'ticket_reply') icon = '💬';
+      else if (n.type === 'kyc_update') icon = '🛡️';
+
+      return `
+        <div class="notif-item ${n.is_read ? '' : 'is-unread'}" onclick="GDXApp.handleNotificationClick('${n.notification_id}', '${n.link || ''}')">
+          <div class="notif-icon-wrap">${icon}</div>
+          <div class="notif-content">
+            <div class="notif-title">${n.title}</div>
+            <div class="notif-body">${n.body}</div>
+            <div class="notif-time">${formatDateTime(n.created_at)}</div>
+          </div>
+          ${!n.is_read ? `<span class="status-dot is-online" style="width:8px; height:8px; margin-top:6px; flex-shrink:0;"></span>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function handleNotificationClick(notifId, link) {
+    await markNotificationRead(notifId);
+    const drawer = document.getElementById('notificationsDrawer');
+    if (drawer) drawer.hidden = true;
+    if (link && link.startsWith('#')) {
+      const screenId = link.slice(1);
+      go(screenId);
+    }
+  }
+
+  async function markNotificationRead(notifId) {
+    const n = (state.notifications || []).find((x) => String(x.notification_id) === String(notifId));
+    if (n) n.is_read = true;
+    await apiRequest(`/api/notifications/${notifId}/read`, { method: 'POST' });
+    fetchNotifications();
+    renderNotificationsList();
+  }
+
+  async function markAllNotificationsRead() {
+    (state.notifications || []).forEach((n) => { n.is_read = true; });
+    await apiRequest('/api/notifications/read-all', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: state.activeUserId })
+    });
+    fetchNotifications();
+    renderNotificationsList();
+    showToast('Đã đánh dấu tất cả thông báo là đã đọc');
+  }
+
+  // =====================================================================
+  // AI ASSISTANT CHATBOT MODULE (FR-AI-001 -> FR-AI-005)
+  // =====================================================================
+  function toggleAiDrawer(forceState) {
+    const drawer = document.getElementById('aiChatDrawer');
+    if (!drawer) return;
+    const isCurrentlyOpen = !drawer.hidden && drawer.style.display !== 'none' && !drawer.classList.contains('is-hidden');
+    const shouldOpen = typeof forceState === 'boolean' ? forceState : !isCurrentlyOpen;
+
+    if (shouldOpen) {
+      drawer.hidden = false;
+      drawer.style.display = 'flex';
+      drawer.classList.remove('is-hidden');
+      if (!state.aiMessages || state.aiMessages.length === 0) {
+        initAiChat();
+      }
+      setTimeout(() => {
+        const input = document.getElementById('aiChatInput');
+        if (input) input.focus();
+      }, 100);
+    } else {
+      drawer.hidden = true;
+      drawer.style.display = 'none';
+      drawer.classList.add('is-hidden');
+    }
+  }
+
+  function closeAiDrawer() {
+    toggleAiDrawer(false);
+  }
+
+  function initAiChat() {
+    state.aiMessages = [
+      {
+        role: 'assistant',
+        content: `Xin chào! 👋 Tôi là **Trợ lý AI Gia Đình Xanh**.\nTôi có thể giúp bạn:\n• Tư vấn lựa chọn dịch vụ dọn dẹp, nấu ăn, điện lạnh phù hợp.\n• Báo giá chi tiết theo giờ hoặc trọn gói.\n• Tìm đối tác thợ được đánh giá cao nhất.\n• Hướng dẫn đặt lịch và giải đáp chính sách bảo hành 10 triệu đồng.`,
+        created_at: new Date().toISOString()
+      }
+    ];
+    renderAiMessages();
+    renderAiPromptChips([
+      'Dọn dẹp nhà 2 giờ giá bao nhiêu?',
+      'Tìm thợ nấu ăn gia đình 5 sao',
+      'Vệ sinh máy lạnh trọn gói',
+      'Chính sách bảo hiểm & hủy đơn'
+    ]);
+  }
+
+  function renderAiMessages() {
+    const body = document.getElementById('aiChatBody');
+    if (!body) return;
+    body.innerHTML = (state.aiMessages || []).map((m) => {
+      const isBot = m.role === 'assistant';
+      const formattedContent = m.content
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+
+      let extraCardsHtml = '';
+      if (m.recommended_services && m.recommended_services.length > 0) {
+        extraCardsHtml = `
+          <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+            <div style="font-size:11px; font-weight:700; color:var(--color-primary); text-transform:uppercase;">Gợi ý dịch vụ phù hợp:</div>
+            ${m.recommended_services.map((s) => `
+              <div class="ai-service-card">
+                <div>
+                  <div class="ai-service-title">${s.title}</div>
+                  <div class="ai-service-price">${formatMoney(s.price)}${s.pricing_type === 'hourly' ? '/giờ' : '/lần'}</div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" style="padding:4px 10px; font-size:11px;" onclick="GDXApp.bookRecommendedService(${s.service_id})">
+                  Đặt ngay &rarr;
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="ai-msg ${isBot ? 'bot' : 'user'}">
+          <div>${formattedContent}</div>
+          ${extraCardsHtml}
+          <span class="ai-msg-time">${formatTimeOnly(m.created_at)}</span>
+        </div>
+      `;
+    }).join('');
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function renderAiPromptChips(chips) {
+    const container = document.getElementById('aiQuickPrompts');
+    if (!container) return;
+    if (!chips || chips.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+    container.style.display = 'flex';
+    container.innerHTML = chips.map((c) => `
+      <button type="button" class="ai-prompt-chip" onclick="GDXApp.sendAiPromptChip('${escapeQuotes(c)}')">
+        ${c}
+      </button>
+    `).join('');
+  }
+
+  function sendAiPromptChip(text) {
+    const input = document.getElementById('aiChatInput');
+    if (input) input.value = text;
+    sendAiChatMessage();
+  }
+
+  async function sendAiChatMessage() {
+    const input = document.getElementById('aiChatInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    const nowIso = new Date().toISOString();
+    state.aiMessages.push({
+      role: 'user',
+      content: text,
+      created_at: nowIso
+    });
+    renderAiMessages();
+
+    const typingId = 'typing_' + Date.now();
+    const body = document.getElementById('aiChatBody');
+    if (body) {
+      const typingEl = document.createElement('div');
+      typingEl.id = typingId;
+      typingEl.className = 'ai-msg bot';
+      typingEl.innerHTML = `<em>Trợ lý AI đang suy nghĩ...</em>`;
+      body.appendChild(typingEl);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    const res = await apiRequest('/api/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        conversation_id: state.aiConversationId,
+        user_id: state.activeUserId,
+        message: text
+      })
+    });
+
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+
+    if (res && res.ok) {
+      state.aiConversationId = res.conversation_id;
+      state.aiMessages.push({
+        role: 'assistant',
+        content: res.reply,
+        recommended_services: res.recommended_services || [],
+        recommended_providers: res.recommended_providers || [],
+        created_at: new Date().toISOString()
+      });
+      renderAiMessages();
+      if (res.suggestions && res.suggestions.length > 0) {
+        renderAiPromptChips(res.suggestions);
+      }
+    } else {
+      state.aiMessages.push({
+        role: 'assistant',
+        content: `Xin lỗi, có lỗi kết nối tới trợ lý AI: ${res ? res.error : 'Vui lòng thử lại sau.'}`,
+        created_at: new Date().toISOString()
+      });
+      renderAiMessages();
+    }
+  }
+
+  function bookRecommendedService(serviceId) {
+    toggleAiDrawer();
+    go('1.2', { serviceId });
+  }
+
+  // =====================================================================
+  // SAVED ADDRESSES MODULE (FR-CUST-003)
+  // =====================================================================
+  function pickSavedAddress(street, wardId, lat, lng) {
+    const addrInput = document.getElementById('wizAddress');
+    const wardSelect = document.getElementById('wizWardSelect');
+    const latInput = document.getElementById('wizLat');
+    const lngInput = document.getElementById('wizLng');
+
+    if (addrInput) addrInput.value = street;
+    if (wardSelect) wardSelect.value = wardId;
+    if (latInput) latInput.value = lat;
+    if (lngInput) lngInput.value = lng;
+
+    state.wizardDraft.address = street;
+    state.wizardDraft.ward_id = wardId;
+    state.wizardDraft.latitude = lat;
+    state.wizardDraft.longitude = lng;
+
+    showToast(`Đã áp dụng địa chỉ: ${street.slice(0, 35)}`);
+  }
+
+  async function addCustomerAddress(tag, streetAddress, wardId, isDefault = false) {
+    const res = await apiRequest('/api/customer/addresses', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer_id: state.activeCustomerId,
+        tag,
+        street_address: streetAddress,
+        ward_id: wardId,
+        is_default: isDefault
+      })
+    });
+    if (res && res.ok) {
+      if (!Array.isArray(window.GDX_DB.customer_addresses)) window.GDX_DB.customer_addresses = [];
+      if (isDefault) {
+        window.GDX_DB.customer_addresses.forEach((a) => { if (Number(a.customer_id) === state.activeCustomerId) a.is_default = false; });
+      }
+      window.GDX_DB.customer_addresses.push(res.address);
+      showToast(`Đã lưu địa chỉ "${tag}" vào Sổ địa chỉ`);
+      if (state.currentScreen === '1.5') go('1.5');
+    } else {
+      showToast(res ? res.error : 'Lỗi khi lưu địa chỉ');
+    }
+  }
+
+  async function deleteCustomerAddress(addressId) {
+    if (!confirm('Bạn có chắc chắn muốn xóa địa chỉ này?')) return;
+    const res = await apiRequest(`/api/customer/addresses/${addressId}`, { method: 'DELETE' });
+    if (res && res.ok) {
+      window.GDX_DB.customer_addresses = (window.GDX_DB.customer_addresses || []).filter((a) => String(a.address_id) !== String(addressId));
+      showToast('Đã xóa địa chỉ thành công');
+      if (state.currentScreen === '1.5') go('1.5');
+    }
+  }
+
+  async function setDefaultCustomerAddress(addressId) {
+    const res = await apiRequest(`/api/customer/addresses/${addressId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_default: true })
+    });
+    if (res && res.ok) {
+      (window.GDX_DB.customer_addresses || []).forEach((a) => {
+        if (Number(a.customer_id) === state.activeCustomerId) {
+          a.is_default = String(a.address_id) === String(addressId);
+        }
+      });
+      showToast('Đã đặt làm địa chỉ mặc định');
+      if (state.currentScreen === '1.5') go('1.5');
+    }
+  }
+
+  // =====================================================================
+  // PROVIDER FAVORITES MODULE (FR-FAV-001)
+  // =====================================================================
+  async function toggleProviderFavorite(providerId) {
+    const db = window.GDX_DB;
+    if (!Array.isArray(db.favorites)) db.favorites = [];
+    const idx = db.favorites.findIndex((f) => Number(f.customer_id) === state.activeCustomerId && Number(f.provider_id) === Number(providerId));
+    let added = false;
+    if (idx >= 0) {
+      db.favorites.splice(idx, 1);
+      added = false;
+    } else {
+      db.favorites.push({
+        favorite_id: Date.now(),
+        customer_id: state.activeCustomerId,
+        provider_id: Number(providerId),
+        created_at: new Date().toISOString()
+      });
+      added = true;
+    }
+
+    await apiRequest('/api/favorites/toggle', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer_id: state.activeCustomerId,
+        provider_id: providerId
+      })
+    });
+
+    const pp = (db.provider_public_profiles || []).find((p) => p.provider_id === providerId);
+    showToast(added ? `Đã thêm thợ ${pp ? pp.full_name : ''} vào danh sách yêu thích!` : `Đã bỏ lưu thợ khỏi danh sách yêu thích.`);
+    if (state.currentScreen === '1.6') go('1.6');
+  }
+
+  // =====================================================================
+  // REVIEW MODERATION MODULE (FR-REV-005)
+  // =====================================================================
+  async function moderateReview(reviewId, status, reason = '') {
+    const db = window.GDX_DB;
+    const rev = (db.reviews || []).find((r) => r.review_id === reviewId);
+    if (!rev) return;
+    rev.status = status;
+    rev.moderation_reason = reason;
+
+    await apiRequest(`/api/admin/reviews/${reviewId}/moderate`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status,
+        moderation_reason: reason,
+        actor_id: state.activeUserId
+      })
+    });
+
+    showToast(status === 'hidden' ? `Đã ẩn bài đánh giá #${reviewId} (Lý do: ${reason})` : `Đã mở lại bài đánh giá #${reviewId}`);
+    if (state.currentScreen === '3.4') go('3.4');
+  }
+
+  function openModerateReviewDialog(reviewId) {
+    const reason = prompt('Nhập lý do ẩn nhận xét vi phạm (VD: Ngôn từ không phù hợp, nội dung sai sự thật):', 'Vi phạm quy tắc cộng đồng');
+    if (reason !== null && reason.trim()) {
+      moderateReview(reviewId, 'hidden', reason.trim());
+    }
+  }
+
+  // =====================================================================
+  // TICKET MESSAGES & INTERNAL NOTES (FR-TKT-005)
+  // =====================================================================
+  async function sendTicketReply(ticketId, form) {
+    const content = form.reply_content.value.trim();
+    if (!content) return;
+    const isInternal = form.is_internal ? form.is_internal.checked : false;
+
+    const res = await apiRequest(`/api/tickets/${ticketId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        sender_id: state.activeUserId,
+        sender_role: state.userRole === 'admin' ? 'admin' : (state.userRole === 'provider' ? 'provider' : 'customer'),
+        content,
+        visibility: isInternal ? 'internal' : 'public'
+      })
+    });
+
+    if (res && res.ok) {
+      if (!Array.isArray(window.GDX_DB.ticket_messages)) window.GDX_DB.ticket_messages = [];
+      window.GDX_DB.ticket_messages.push(res.message);
+      form.reply_content.value = '';
+      showToast(isInternal ? 'Đã lưu ghi chú nội bộ thành công' : 'Đã gửi phản hồi tới người dùng');
+      openModal(state.userRole === 'admin' ? '3.9' : '1.11', { ticketId });
+    } else {
+      showToast(res ? res.error : 'Lỗi khi gửi phản hồi');
+    }
+  }
+
   function formatSeconds(sec) {
     const h = String(Math.floor(sec / 3600)).padStart(2, '0');
     const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
@@ -651,6 +1115,7 @@ window.GDXApp = (() => {
       in_progress: 'badge-info',
       completed: 'badge-positive',
       cancelled: 'badge-negative',
+      auto_cancelled: 'badge-negative',
       rejected: 'badge-negative'
     }[st] || 'badge-neutral';
     return `<span class="badge ${cls}">${formatStatusLabel(st)}</span>`;
@@ -3657,6 +4122,22 @@ window.GDXApp = (() => {
               </div>
             </div>
 
+            ${
+              (db.customer_addresses || []).filter((a) => Number(a.customer_id) === state.activeCustomerId).length > 0
+                ? `
+              <div style="margin-bottom:8px;">
+                <label class="field-label" style="font-size:0.8125rem;">Chọn nhanh từ Sổ địa chỉ đã lưu (FR-CUST-003):</label>
+                <div class="wizard-address-chips">
+                  ${(db.customer_addresses || []).filter((a) => Number(a.customer_id) === state.activeCustomerId).map((a) => `
+                    <button type="button" class="wizard-addr-chip" onclick="GDXApp.pickSavedAddress('${escapeQuotes(a.street_address)}', '${a.ward_id}', ${a.latitude || 10.741}, ${a.longitude || 106.702})">
+                      📍 <strong>${a.tag}</strong>: ${a.street_address.slice(0, 32)}${a.street_address.length > 32 ? '...' : ''}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>`
+                : ''
+            }
+
             <div class="form-row-2">
               <div class="field-group">
                 <label class="field-label" for="wizWardSelect">Phường / Xã phục vụ (bookings.ward_id)</label>
@@ -3946,9 +4427,23 @@ window.GDXApp = (() => {
     const isBroadcast = state.wizardProviderMode !== 'direct';
     const chosenProviderId = isBroadcast ? null : (state.selectedProviderId || 201);
 
+    const addressVal = (addrEl && addrEl.value ? addrEl.value.trim() : '') ||
+                       (cust && cust.default_address ? cust.default_address.trim() : '') ||
+                       (state.wizardDraft.address ? state.wizardDraft.address.trim() : '') ||
+                       'Số 14 Đường Nội Khu Cảnh Đồi, Phú Mỹ Hưng';
+
+    const wardVal = (wardEl && wardEl.value ? String(wardEl.value).trim() : '') ||
+                    (cust && cust.ward_id ? String(cust.ward_id).trim() : '') ||
+                    (state.wizardDraft.ward_id ? String(state.wizardDraft.ward_id).trim() : '') ||
+                    '27403';
+
+    const customerIdVal = state.activeCustomerId ||
+                          (cust ? cust.customer_id : null) ||
+                          (db.customer_profiles && db.customer_profiles[0] ? db.customer_profiles[0].customer_id : 101);
+
     const newBooking = {
       booking_id: newId,
-      customer_id: state.activeCustomerId,
+      customer_id: customerIdVal,
       provider_id: chosenProviderId,
       dispatch_type: isBroadcast ? 'broadcast' : 'direct',
       service_id: svc.service_id,
@@ -3959,8 +4454,8 @@ window.GDXApp = (() => {
       total_incidental: 0,
       incidental_Specify: null,
       total_amount: totalAmount,
-      address: addrEl && addrEl.value ? addrEl.value.trim() : (cust ? cust.default_address : 'Địa chỉ theo hồ sơ'),
-      ward_id: wardEl && wardEl.value ? wardEl.value : (cust ? cust.ward_id : '27403'),
+      address: addressVal,
+      ward_id: wardVal,
       latitude: chosenLat,
       longitude: chosenLng,
       notes: notesEl ? notesEl.value : ''
@@ -3970,6 +4465,11 @@ window.GDXApp = (() => {
       method: 'POST',
       body: JSON.stringify(newBooking)
     });
+
+    if (res && !res.ok) {
+      showToast(res.error || 'Không thể tạo đơn đặt lịch do trùng lịch hoặc thợ bận.');
+      return;
+    }
 
     const realBooking = (res && res.ok && res.booking) ? res.booking : newBooking;
     db.bookings = db.bookings || [];
@@ -4486,6 +4986,35 @@ window.GDXApp = (() => {
               <strong class="num">${(db.support_tickets || []).filter((t) => t.user_id === u.user_id).length} phiếu</strong>
             </div>
           </div>
+
+          <!-- Sổ địa chỉ đã lưu (FR-CUST-003) -->
+          <div class="panel form-stack">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h2 class="panel-title" style="margin:0;">Sổ địa chỉ đã lưu</h2>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.openAddAddressModal()">+ Thêm địa chỉ</button>
+            </div>
+            <div class="form-stack" style="gap:10px;">
+              ${
+                (db.customer_addresses || []).filter((a) => Number(a.customer_id) === cust.customer_id).length === 0
+                  ? `<div class="field-hint" style="text-align:center; padding:16px;">Chưa có địa chỉ phụ nào được lưu. Bấm "+ Thêm địa chỉ" để lưu địa chỉ nhà, cơ quan...</div>`
+                  : (db.customer_addresses || []).filter((a) => Number(a.customer_id) === cust.customer_id).map((a) => `
+                    <div class="panel-subtle" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                      <div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                          <strong style="font-size:14px;">📍 ${a.tag}</strong>
+                          ${a.is_default ? '<span class="badge badge-positive" style="font-size:10px;">Mặc định</span>' : ''}
+                        </div>
+                        <div style="font-size:12.5px; margin-top:2px; color:var(--color-text-secondary);">${a.street_address}</div>
+                      </div>
+                      <div style="display:flex; gap:6px;">
+                        ${!a.is_default ? `<button type="button" class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="GDXApp.setDefaultCustomerAddress('${a.address_id}')">Đặt mặc định</button>` : ''}
+                        <button type="button" class="btn btn-danger btn-sm" style="font-size:11px; padding:2px 8px;" onclick="GDXApp.deleteCustomerAddress('${a.address_id}')">Xóa</button>
+                      </div>
+                    </div>
+                  `).join('')
+              }
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -4566,64 +5095,107 @@ window.GDXApp = (() => {
     go('1.5');
   }
 
-  // 1.6: Danh sách Dịch vụ yêu thích
+  function openAddAddressModal() {
+    const tag = prompt('Nhập nhãn địa chỉ (VD: Nhà riêng, Văn phòng, Nhà bố mẹ):', 'Văn phòng');
+    if (!tag) return;
+    const street = prompt('Nhập địa chỉ chi tiết (Số nhà, tên đường, tòa nhà):', '');
+    if (!street || !street.trim()) return;
+    const cust = getActiveCustomerProfile();
+    addCustomerAddress(tag.trim(), street.trim(), (cust ? cust.ward_id : '27403'), false);
+  }
+
+  // 1.6: Danh sách Dịch vụ & Thợ yêu thích (FR-FAV-001)
   function renderScreen_1_6(container) {
     const db = window.GDX_DB;
-    const favs = db.favorites.filter((f) => f.customer_id === state.activeCustomerId);
+    const favs = (db.favorites || []).filter((f) => Number(f.customer_id) === state.activeCustomerId);
+    const serviceFavs = favs.filter((f) => f.service_id);
+    const providerFavs = favs.filter((f) => f.provider_id);
 
     container.innerHTML = `
       <div class="screen-header">
         <div>
-          <h1 class="screen-title">1.6. Danh sách Dịch vụ yêu thích đã lưu (${favs.length})</h1>
-          <p class="screen-finding">Bảng: favorites (customer_id, service_id), chính sách RLS fav_own.</p>
+          <h1 class="screen-title">1.6. Danh sách Mục Yêu thích đã lưu (${favs.length})</h1>
+          <p class="screen-finding">Bảng: favorites (customer_id, service_id, provider_id), hỗ trợ lưu cả gói dịch vụ và thợ ruột.</p>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.go('1.1')">&larr; Khám phá thêm dịch vụ</button>
       </div>
 
-      ${
-        favs.length === 0
-          ? `
-        <div class="panel" style="text-align:center; padding:40px 24px;">
-          <div style="font-weight:600; font-size:16px; margin-bottom:6px;">Bạn chưa lưu dịch vụ yêu thích nào</div>
-          <p class="field-hint" style="margin-bottom:16px;">Bấm biểu tượng trái tim trên các thẻ dịch vụ ở Trang chủ để lưu nhanh những gói bạn thường đặt.</p>
-          <button type="button" class="btn btn-primary" onclick="GDXApp.go('1.1')">Khám phá dịch vụ ngay</button>
-        </div>`
-          : `
-        <div class="service-grid">
-          ${favs
-            .map((f) => {
-              const s = db.services.find((x) => x.service_id === f.service_id);
-              if (!s) return '';
-              const cat = db.service_categories.find((c) => c.category_id === s.category_id);
+      <!-- Section 1: Thợ yêu thích -->
+      <div class="panel form-stack" style="margin-bottom:24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 class="panel-title" style="margin:0;">Đối tác Thợ yêu thích (${providerFavs.length})</h2>
+          <span class="field-hint">Thợ bạn đã bấm lưu yêu thích để ưu tiên đặt lại</span>
+        </div>
+        ${
+          providerFavs.length === 0
+            ? `<div class="field-hint" style="padding:16px 0; text-align:center;">Bạn chưa lưu thợ yêu thích nào. Khi xem hồ sơ thợ (1.7), hãy bấm "Lưu thợ yêu thích" để xem lại tại đây.</div>`
+            : `
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px;">
+            ${providerFavs.map((f) => {
+              const p = (db.provider_public_profiles || []).find((x) => Number(x.provider_id) === Number(f.provider_id));
+              if (!p) return '';
               return `
-              <article class="service-card">
-                <div class="service-card-media">
-                  <img src="${s.image_url || 'assets/service-cleaning.jpg'}" alt="${s.title}">
-                  <span class="service-card-badge">${cat ? cat.name : 'Yêu thích'}</span>
-                  <button type="button" class="fav-icon-btn is-favorited" onclick="GDXApp.toggleFavorite(${s.service_id})" aria-label="Bỏ lưu">
-                    ${Icons.heart(true)}
-                  </button>
-                </div>
-                <div class="service-card-body">
-                  <div class="service-card-title">${s.title}</div>
-                  <div class="service-card-meta">
-                    <span>${Icons.clock()} ~${s.estimated_duration} phút</span>
-                    <span>·</span>
-                    <span>Đã lưu: ${formatDateTime(f.created_at)}</span>
-                  </div>
-                  <div class="service-card-footer">
-                    <div class="service-price num">${formatMoney(s.price)}<span style="font-size:12.5px; color:var(--app-muted);">${s.pricing_type === 'hourly' ? '/giờ' : '/lần'}</span></div>
-                    <div style="display:flex; gap:6px;">
-                      <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.toggleFavorite(${s.service_id})">Bỏ lưu</button>
-                      <button type="button" class="btn btn-primary btn-sm" onclick="GDXApp.go('1.2', {serviceId: ${s.service_id}})">Đặt lịch &rarr;</button>
+                <div class="panel-subtle" style="display:flex; gap:12px; align-items:center; justify-content:space-between;">
+                  <div style="display:flex; gap:12px; align-items:center;">
+                    <img src="${p.avatar_url}" alt="${p.full_name}" class="provider-avatar-lg" style="width:50px; height:50px;">
+                    <div>
+                      <strong style="font-size:15px;">${p.full_name}</strong>
+                      <div class="field-hint">⭐ ${Number(p.average_rating).toFixed(2)} (${p.total_reviews} đánh giá)</div>
                     </div>
                   </div>
+                  <div style="display:flex; flex-direction:column; gap:6px;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="GDXApp.go('1.2', {providerId: ${p.provider_id}})">Đặt lịch</button>
+                    <button type="button" class="btn btn-ghost btn-sm" style="font-size:11px;" onclick="GDXApp.toggleProviderFavorite(${p.provider_id})">Bỏ lưu</button>
+                  </div>
                 </div>
-              </article>`;
-            })
-            .join('')}
-        </div>`
-      }
+              `;
+            }).join('')}
+          </div>`
+        }
+      </div>
+
+      <!-- Section 2: Dịch vụ yêu thích -->
+      <div class="panel form-stack">
+        <h2 class="panel-title">Gói Dịch vụ yêu thích (${serviceFavs.length})</h2>
+        ${
+          serviceFavs.length === 0
+            ? `<div class="field-hint" style="padding:16px 0; text-align:center;">Bạn chưa lưu gói dịch vụ nào. Bấm trái tim ở trang chủ để lưu nhanh.</div>`
+            : `
+          <div class="service-grid">
+            ${serviceFavs.map((f) => {
+              const s = (db.services || []).find((x) => Number(x.service_id) === Number(f.service_id));
+              if (!s) return '';
+              const cat = (db.service_categories || []).find((c) => Number(c.category_id) === Number(s.category_id));
+              return `
+                <article class="service-card">
+                  <div class="service-card-media">
+                    <img src="${s.image_url || 'assets/service-cleaning.jpg'}" alt="${s.title}">
+                    <span class="service-card-badge">${cat ? cat.name : 'Yêu thích'}</span>
+                    <button type="button" class="fav-icon-btn is-favorited" onclick="GDXApp.toggleFavorite(${s.service_id})" aria-label="Bỏ lưu">
+                      ${Icons.heart(true)}
+                    </button>
+                  </div>
+                  <div class="service-card-body">
+                    <div class="service-card-title">${s.title}</div>
+                    <div class="service-card-meta">
+                      <span>${Icons.clock()} ~${s.estimated_duration || 120} phút</span>
+                      <span>·</span>
+                      <span>Đã lưu: ${formatDateTime(f.created_at)}</span>
+                    </div>
+                    <div class="service-card-footer">
+                      <div class="service-price num">${formatMoney(s.price)}<span style="font-size:12.5px; color:var(--app-muted);">${s.pricing_type === 'hourly' ? '/giờ' : '/lần'}</span></div>
+                      <div style="display:flex; gap:6px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.toggleFavorite(${s.service_id})">Bỏ lưu</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="GDXApp.go('1.2', {serviceId: ${s.service_id}})">Đặt lịch &rarr;</button>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              `;
+            }).join('')}
+          </div>`
+        }
+      </div>
     `;
   }
 
@@ -5714,19 +6286,29 @@ window.GDXApp = (() => {
             <h2 class="panel-title">Kiểm duyệt Nhận xét &amp; Đánh giá (reviews)</h2>
             ${db.reviews
               .map(
-                (r) => `
-              <div class="panel-subtle" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                (r) => {
+                  const isHidden = r.status === 'hidden';
+                  return `
+              <div class="panel-subtle" style="display:flex; justify-content:space-between; align-items:center; gap:12px; opacity:${isHidden ? '0.75' : '1'}; border-left: 3px solid ${isHidden ? 'var(--color-danger, #ef4444)' : 'var(--color-success, #10b981)'};">
                 <div>
                   <div style="display:flex; align-items:center; gap:8px;">
                     ${Icons.starRow(r.rating)}
                     <span class="field-hint num">Đơn #${r.booking_id} · Thợ #${r.provider_id}</span>
+                    ${isHidden
+                      ? `<span class="badge badge-negative" style="font-size:11px;">Đã ẩn (${r.moderation_reason || 'Vi phạm'})</span>`
+                      : `<span class="badge badge-positive" style="font-size:11px;">Đang hiển thị</span>`
+                    }
                   </div>
                   <div style="margin-top:4px; font-size:13.5px;">"${r.comment}"</div>
                 </div>
-                <button type="button" class="btn btn-danger btn-sm" onclick="GDXApp.deleteReview(${r.review_id})">
-                  Gỡ nhận xét
-                </button>
-              </div>`
+                <div style="display:flex; gap:6px;">
+                  ${isHidden
+                    ? `<button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.moderateReview(${r.review_id}, 'published')">Mở lại</button>`
+                    : `<button type="button" class="btn btn-danger btn-sm" onclick="GDXApp.openModerateReviewDialog(${r.review_id})">Ẩn vi phạm</button>`
+                  }
+                </div>
+              </div>`;
+                }
               )
               .join('')}
           </div>
@@ -5755,6 +6337,48 @@ window.GDXApp = (() => {
               })
               .join('')}
           </div>
+        </div>
+      </div>
+
+      <div class="panel form-stack" style="margin-top: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 class="panel-title">Nhật ký Hệ thống &amp; Thao tác Quản trị (audit_logs)</h2>
+            <p class="field-hint" style="margin-top:2px;">Ghi nhận minh bạch mọi hành động nhạy cảm (duyệt KYC, khóa tài khoản, ẩn review, đổi dịch vụ)</p>
+          </div>
+          <span class="badge badge-info">${(db.audit_logs || []).length} bản ghi</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Thời gian</th>
+                <th>Người thực hiện</th>
+                <th>Hành động (action)</th>
+                <th>Đối tượng (target)</th>
+                <th>Chi tiết (details)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(db.audit_logs || []).slice(0, 15).map((al) => {
+                const actor = (db.users || []).find((u) => u.user_id === al.actor_id || String(u.user_id) === String(al.actor_id));
+                const actorName = actor ? actor.full_name : `#${al.actor_id}`;
+                const detailsStr = typeof al.details === 'object' ? JSON.stringify(al.details) : String(al.details || '');
+                return `
+                  <tr>
+                    <td class="num" style="white-space:nowrap; font-size:12px;">${formatDateTime(al.created_at)}</td>
+                    <td><strong>${actorName}</strong></td>
+                    <td><code>${al.action}</code></td>
+                    <td><span class="badge badge-subtle">${al.target_entity} #${al.target_id || ''}</span></td>
+                    <td style="font-size:12px; color:var(--color-muted); max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${detailsStr}">
+                      ${detailsStr}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+              ${(!db.audit_logs || db.audit_logs.length === 0) ? `<tr><td colspan="5" class="empty-cell">Chưa có nhật ký ghi nhận</td></tr>` : ''}
+            </tbody>
+          </table>
         </div>
       </div>
     `;
@@ -5822,8 +6446,17 @@ window.GDXApp = (() => {
 
   function closeModal() {
     const dialog = document.getElementById('appModal');
-    if (dialog && dialog.open) {
-      closeTopLayer(dialog);
+    if (!dialog) return;
+    state.activeModal = null;
+    try {
+      if (dialog.open) {
+        closeTopLayer(dialog);
+      } else {
+        if (typeof dialog.close === 'function') dialog.close();
+        dialog.removeAttribute('open');
+      }
+    } catch (_e) {
+      dialog.removeAttribute('open');
     }
   }
 
@@ -5832,7 +6465,8 @@ window.GDXApp = (() => {
     const db = window.GDX_DB;
     const provId = params.providerId || 201;
     const p = db.provider_public_profiles.find((x) => x.provider_id === provId) || db.provider_public_profiles[0];
-    const revs = db.reviews.filter((r) => r.provider_id === p.provider_id);
+    const isFavProv = (db.favorites || []).some((f) => Number(f.customer_id) === state.activeCustomerId && Number(f.provider_id) === p.provider_id);
+    const revs = db.reviews.filter((r) => r.provider_id === p.provider_id && r.status !== 'hidden');
     const skillIds = db.provider_services.filter((ps) => ps.provider_id === p.provider_id).map((ps) => ps.service_id);
     const skills = db.services.filter((s) => skillIds.includes(s.service_id));
     const schedules = db.availability_schedules.filter((a) => a.provider_id === p.provider_id && a.is_available);
@@ -5864,7 +6498,12 @@ window.GDXApp = (() => {
             </div>
           </div>
         </div>
-        <button type="button" class="ghost-btn btn-sm" onclick="GDXApp.closeModal()">Đóng ✕</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.toggleProviderFavorite(${p.provider_id}); GDXApp.openModal('1.7', {providerId: ${p.provider_id}})">
+            ${isFavProv ? '❤️ Đã lưu thợ' : '🤍 Lưu thợ yêu thích'}
+          </button>
+          <button type="button" class="ghost-btn btn-sm" onclick="GDXApp.closeModal()">Đóng ✕</button>
+        </div>
       </div>
       <div class="modal-body form-stack">
         <div class="panel-subtle">
@@ -6535,14 +7174,82 @@ window.GDXApp = (() => {
   // 1.11: Trung tâm Hỗ trợ & Gửi khiếu nại
   function renderModal_1_11(el, params = {}) {
     const db = window.GDX_DB;
-    const myBookings = db.bookings.filter((b) => b.customer_id === state.activeCustomerId);
+    const ticketId = params.ticketId;
+
+    if (ticketId) {
+      const t = (db.support_tickets || []).find((x) => Number(x.ticket_id) === Number(ticketId)) || {
+        ticket_id: ticketId, subject: 'Phiếu hỗ trợ', description: '', status: 'open', priority: 'medium'
+      };
+      const messages = (db.ticket_messages || []).filter((m) => Number(m.ticket_id) === Number(t.ticket_id) && m.visibility !== 'internal');
+
+      el.innerHTML = `
+        <div class="modal-header">
+          <div>
+            <div class="modal-title">Phiếu hỗ trợ #${t.ticket_id}: ${t.subject}</div>
+            <div class="field-hint">Trạng thái: <strong>${t.status}</strong> · Mức độ: <strong>${t.priority}</strong> · Đơn #${t.booking_id || 'N/A'}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.openModal('1.11')">&larr; Tất cả phiếu</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()">✕</button>
+          </div>
+        </div>
+        <div class="modal-body form-stack">
+          <div class="panel-subtle">
+            <strong style="font-size:14px;">Nội dung sự việc:</strong>
+            <p class="field-hint" style="margin-top:6px; font-size:13.5px; line-height:1.5;">${t.description || 'Không có mô tả.'}</p>
+            <div class="field-hint" style="margin-top:8px; font-size:12px;">Ngày gửi: <strong>${formatDateTime(t.created_at || new Date().toISOString())}</strong></div>
+          </div>
+
+          <div style="margin-top:10px;">
+            <strong style="font-size:14px; font-family:var(--font-heading);">Trao đổi với Quản trị &amp; Điều phối (${messages.length}):</strong>
+            <div class="ticket-thread" style="margin-top:8px; display:flex; flex-direction:column; gap:10px;">
+              ${messages.length === 0 ? '<div class="field-hint">Chưa có phản hồi mới. Nhân viên hỗ trợ sẽ phản hồi trong vòng 15-30 phút.</div>' : messages.map((m) => {
+                const isMine = m.sender_role === 'customer' || m.sender_id === state.activeUserId;
+                const senderName = isMine ? 'Bạn' : (m.sender_role === 'admin' ? 'Bộ phận Hỗ trợ / CSKH' : 'Đối tác thợ');
+                return `
+                  <div class="ticket-msg-card" style="padding:10px 14px; border-radius:10px; border:1px solid var(--color-border); background:${isMine ? 'var(--color-primary-subtle, #f0fdf4)' : 'var(--color-surface)'}; margin-left:${isMine ? '24px' : '0'}; margin-right:${isMine ? '0' : '24px'};">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <strong style="font-size:13px; color:${isMine ? 'var(--color-primary)' : 'inherit'};">${senderName}</strong>
+                        <span class="badge ${isMine ? 'badge-positive' : 'badge-info'}" style="font-size:10.5px;">${m.sender_role || 'user'}</span>
+                      </div>
+                      <span class="field-hint" style="font-size:11px;">${formatDateTime(m.created_at)}</span>
+                    </div>
+                    <div style="font-size:13.5px; line-height:1.5; color:var(--color-text);">${m.message_body || m.content || ''}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <div style="margin-top:12px; padding:12px; border-radius:10px; background:var(--color-bg-subtle, #f8fafc); border:1px solid var(--color-border);">
+            <strong style="font-size:13px; margin-bottom:6px; display:block;">Gửi thêm thông tin trao đổi:</strong>
+            <form onsubmit="event.preventDefault(); GDXApp.sendTicketReply(${t.ticket_id}, this);">
+              <div class="field-group">
+                <textarea name="reply_content" class="textarea" rows="2" placeholder="Nhập nội dung cần hỗ trợ thêm hoặc câu hỏi phản hồi..." required></textarea>
+              </div>
+              <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                <button type="submit" class="btn btn-primary btn-sm">Gửi phản hồi &rarr;</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="GDXApp.closeModal()">Đóng</button>
+        </div>
+      `;
+      return;
+    }
+
+    const myBookings = (db.bookings || []).filter((b) => b.customer_id === state.activeCustomerId);
     const defaultBookingId = params.bookingId || (myBookings[0] ? myBookings[0].booking_id : 1042);
+    const myTickets = (db.support_tickets || []).filter((t) => t.user_id === state.activeUserId || !t.user_id || state.userRole === 'customer');
 
     el.innerHTML = `
       <div class="modal-header">
         <div>
           <div class="modal-title">1.11. Trung tâm Hỗ trợ &amp; Gửi phiếu yêu cầu</div>
-          <div class="field-hint">Bảng: support_tickets (user_id, booking_id, subject, description, priority, status)</div>
+          <div class="field-hint">Bảng: support_tickets &amp; ticket_messages</div>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()">Đóng ✕</button>
       </div>
@@ -6552,7 +7259,7 @@ window.GDXApp = (() => {
             <div class="field-group">
               <label class="field-label" for="tkBookingId">Đơn hàng liên quan (booking_id)</label>
               <select id="tkBookingId" name="booking_id" class="select">
-                ${db.bookings
+                ${(db.bookings || [])
                   .map(
                     (b) => `<option value="${b.booking_id}" ${b.booking_id === defaultBookingId ? 'selected' : ''}>Đơn #${b.booking_id} (${b.status})</option>`
                   )
@@ -6581,20 +7288,26 @@ window.GDXApp = (() => {
           </div>
 
           <div>
-            <strong style="font-size:13.5px;">Các phiếu hỗ trợ đã gửi gần đây (${db.support_tickets.length}):</strong>
+            <strong style="font-size:13.5px;">Các phiếu hỗ trợ của bạn (${myTickets.length}):</strong>
             <div class="form-stack" style="gap:8px; margin-top:8px;">
-              ${db.support_tickets
+              ${myTickets
                 .map(
                   (t) => `
-                <div class="panel-subtle">
-                  <div style="display:flex; justify-content:space-between;">
-                    <strong>#${t.ticket_id} · ${t.subject}</strong>
-                    ${priorityBadge(t.priority)}
+                <div class="panel-subtle" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <strong>#${t.ticket_id} · ${t.subject}</strong>
+                      ${priorityBadge(t.priority)}
+                    </div>
+                    <div class="field-hint" style="margin-top:4px;">Đơn #${t.booking_id} · Trạng thái: <strong>${t.status}</strong></div>
                   </div>
-                  <div class="field-hint" style="margin-top:4px;">Đơn #${t.booking_id} · Trạng thái: <strong>${t.status}</strong></div>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.openModal('1.11', { ticketId: ${t.ticket_id} })">
+                    Xem trao đổi &rarr;
+                  </button>
                 </div>`
                 )
                 .join('')}
+              ${myTickets.length === 0 ? '<div class="field-hint">Bạn chưa gửi phiếu hỗ trợ nào.</div>' : ''}
             </div>
           </div>
         </div>
@@ -7104,21 +7817,31 @@ window.GDXApp = (() => {
   // 3.9: Xử lý Phiếu Hỗ trợ (Support Ticket Detail)
   function renderModal_3_9(el, params = {}) {
     const db = window.GDX_DB;
-    const t = db.support_tickets.find((x) => x.ticket_id === (params.ticketId || 501)) || db.support_tickets[0];
+    const ticketId = params.ticketId || 701;
+    const t = (db.support_tickets || []).find((x) => Number(x.ticket_id) === Number(ticketId)) || db.support_tickets[0] || {
+      ticket_id: ticketId, subject: 'Phiếu hỗ trợ', description: '', status: 'open', priority: 'medium'
+    };
+    const messages = (db.ticket_messages || []).filter((m) => Number(m.ticket_id) === Number(t.ticket_id));
+
     el.innerHTML = `
       <div class="modal-header">
         <div>
           <div class="modal-title">3.9. Xử lý Phiếu Hỗ trợ #${t.ticket_id}</div>
-          <div class="field-hint">Cập nhật support_tickets.status và support_tickets.priority</div>
+          <div class="field-hint">Cập nhật support_tickets &amp; Trao đổi đối soát (ticket_messages)</div>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.closeModal()">✕</button>
       </div>
-      <form onsubmit="event.preventDefault(); GDXApp.updateSupportTicket(${t.ticket_id}, this);">
-        <div class="modal-body form-stack">
-          <div class="panel-subtle">
+      <div class="modal-body form-stack">
+        <div class="panel-subtle">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
             <strong>${t.subject}</strong>
-            <p class="field-hint" style="margin-top:4px;">${t.description}</p>
+            ${priorityBadge(t.priority)}
           </div>
+          <p class="field-hint" style="margin-top:6px; font-size:13.5px; line-height:1.5;">${t.description || 'Không có mô tả chi tiết.'}</p>
+          <div class="field-hint" style="margin-top:8px; font-size:12px;">Đơn hàng: <strong>#${t.booking_id || 'N/A'}</strong> · Ngày tạo: <strong>${formatDateTime(t.created_at || new Date().toISOString())}</strong></div>
+        </div>
+
+        <form onsubmit="event.preventDefault(); GDXApp.updateSupportTicket(${t.ticket_id}, this);">
           <div class="form-row-2">
             <div class="field-group">
               <label class="field-label" for="admTkStatus">Trạng thái xử lý (ticket_status)</label>
@@ -7139,22 +7862,69 @@ window.GDXApp = (() => {
               </select>
             </div>
           </div>
+          <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+            <button type="submit" class="btn btn-secondary btn-sm">Cập nhật trạng thái</button>
+          </div>
+        </form>
+
+        <div style="margin-top:12px;">
+          <strong style="font-size:14px; font-family:var(--font-heading);">Lịch sử trao đổi &amp; Ghi chú nội bộ (${messages.length}):</strong>
+          <div class="ticket-thread" style="margin-top:8px; display:flex; flex-direction:column; gap:10px;">
+            ${messages.length === 0 ? '<div class="field-hint">Chưa có tin nhắn nào trong phiếu này.</div>' : messages.map((m) => {
+              const isInternal = m.visibility === 'internal';
+              const sender = (db.users || []).find((u) => u.user_id === m.sender_id || String(u.user_id) === String(m.sender_id));
+              const senderName = sender ? sender.full_name : (m.sender_role === 'admin' ? 'Điều phối viên' : (m.sender_role === 'provider' ? 'Đối tác thợ' : 'Khách hàng'));
+              return `
+                <div class="ticket-msg-card ${isInternal ? 'is-internal' : ''}" style="padding:10px 14px; border-radius:10px; border:1px solid ${isInternal ? '#fcd34d' : 'var(--color-border)'}; background:${isInternal ? '#fffbeb' : 'var(--color-surface)'};">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <strong style="font-size:13px;">${senderName}</strong>
+                      <span class="badge ${m.sender_role === 'admin' ? 'badge-info' : 'badge-subtle'}" style="font-size:10.5px;">${m.sender_role || 'user'}</span>
+                      ${isInternal ? '<span class="badge-internal-note" style="font-size:11px; font-weight:600; color:#b45309; background:#fef3c7; padding:2px 6px; border-radius:4px;">🔒 Ghi chú nội bộ</span>' : ''}
+                    </div>
+                    <span class="field-hint" style="font-size:11px;">${formatDateTime(m.created_at)}</span>
+                  </div>
+                  <div style="font-size:13.5px; line-height:1.5; color:var(--color-text);">${m.message_body || m.content || ''}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="GDXApp.closeModal()">Đóng</button>
-          <button type="submit" class="btn btn-primary">Lưu kết quả xử lý</button>
+
+        <div style="margin-top:12px; padding:12px; border-radius:10px; background:var(--color-bg-subtle, #f8fafc); border:1px solid var(--color-border);">
+          <strong style="font-size:13px; margin-bottom:6px; display:block;">Gửi phản hồi hoặc thêm ghi chú nội bộ:</strong>
+          <form onsubmit="event.preventDefault(); GDXApp.sendTicketReply(${t.ticket_id}, this);">
+            <div class="field-group">
+              <textarea name="reply_content" class="textarea" rows="2" placeholder="Nhập câu trả lời gửi khách hàng hoặc ghi chú đối soát nội bộ..." required></textarea>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+              <label style="font-size:12.5px; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+                <input type="checkbox" name="is_internal" value="1">
+                <span>🔒 Đánh dấu <strong>Ghi chú nội bộ</strong> (Khách không nhìn thấy)</span>
+              </label>
+              <button type="submit" class="btn btn-primary btn-sm">Gửi phản hồi &rarr;</button>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="GDXApp.closeModal()">Đóng</button>
+      </div>
     `;
   }
 
-  function updateSupportTicket(ticketId, form) {
-    const t = window.GDX_DB.support_tickets.find((x) => x.ticket_id === ticketId);
+  async function updateSupportTicket(ticketId, form) {
+    const status = form.status ? form.status.value : null;
+    const priority = form.priority ? form.priority.value : null;
+    const t = window.GDX_DB.support_tickets.find((x) => Number(x.ticket_id) === Number(ticketId));
     if (t) {
-      t.status = form.status.value;
-      t.priority = form.priority.value;
+      if (status) t.status = status;
+      if (priority) t.priority = priority;
     }
-    closeModal();
+    await apiRequest(`/api/tickets/${ticketId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, priority, actor_id: state.activeUserId })
+    });
     showToast(`Đã cập nhật phiếu hỗ trợ #${ticketId}`);
     if (state.currentScreen === '3.4') go('3.4');
   }
@@ -7250,7 +8020,35 @@ window.GDXApp = (() => {
         e.preventDefault();
         closeModal();
       });
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+          closeModal();
+        }
+      });
     }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const notifDrawer = document.getElementById('notificationsDrawer');
+        if (notifDrawer && (!notifDrawer.hidden || notifDrawer.style.display === 'flex')) {
+          toggleNotificationsDrawer(false);
+        }
+        const aiDrawer = document.getElementById('aiChatDrawer');
+        if (aiDrawer && (!aiDrawer.hidden || aiDrawer.style.display === 'flex')) {
+          toggleAiDrawer(false);
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const notifDrawer = document.getElementById('notificationsDrawer');
+      const notifBell = document.getElementById('notifBellBtn');
+      if (notifDrawer && !notifDrawer.hidden && notifDrawer.style.display === 'flex') {
+        if (!notifDrawer.contains(e.target) && !notifBell?.contains(e.target)) {
+          toggleNotificationsDrawer(false);
+        }
+      }
+    });
 
     const params = new URLSearchParams(window.location.search);
     const modeParam = params.get('mode') || params.get('env');
@@ -7339,6 +8137,26 @@ window.GDXApp = (() => {
     updateSupportTicket,
     initCustomerLocationPicker,
     locateUserGPS,
+    toggleNotificationsDrawer,
+    closeNotificationsDrawer,
+    fetchNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+    handleNotificationClick,
+    toggleAiDrawer,
+    closeAiDrawer,
+    sendAiChatMessage,
+    sendAiPromptChip,
+    bookRecommendedService,
+    pickSavedAddress,
+    addCustomerAddress,
+    deleteCustomerAddress,
+    setDefaultCustomerAddress,
+    openAddAddressModal,
+    toggleProviderFavorite,
+    moderateReview,
+    openModerateReviewDialog,
+    sendTicketReply,
     rpc: RPC,
     RPC
   };

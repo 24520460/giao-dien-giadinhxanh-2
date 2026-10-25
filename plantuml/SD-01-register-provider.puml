@@ -1,0 +1,88 @@
+@startuml SD-01-register-provider
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-01: Đăng ký Đối tác Thợ (Provider) & Thiết lập Khu vực Hoạt động\n(Gộp FR-AUTH-02 & FR-PROV-03)
+
+actor "Visitor\n(Provider)" as Prov #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+participant "Supabase Auth\n(GoTrue)" as Auth #E0F2FE
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+
+Prov -> UI: 1. Nhập thông tin đăng ký thợ:\nHọ tên, email, mật khẩu, SĐT, số CCCD, kỹ năng,\nkinh nghiệm và chọn các Phường/Xã hoạt động (ward_ids)
+activate Prov
+activate UI
+
+UI -> UI: 2. Validate form client-side\n(Email regex, SĐT 10 số, CCCD 12 số, mật khẩu >= 6 ký tự)
+
+UI -> API: 3. POST /api/onboarding/provider\n{ full_name, email, password, phone_number, id_card_number, bio, ward_ids[] }
+activate API
+
+group Transaction: Đăng ký tài khoản & Hồ sơ Đối tác
+    API -> Auth: 4. admin.createUser({ email, password, email_confirm: true })
+    activate Auth
+    
+    alt Auth thất bại (Email đã tồn tại / lỗi mật khẩu)
+        Auth --> API: 5a. Trả về lỗi Auth (400 / 422)
+        API --> UI: 5b. HTTP 400 Bad Request\n{ ok: false, error: "Email đã được sử dụng." }
+        UI --> Prov: 5c. Hiển thị thông báo lỗi trên form
+    else Auth thành công
+        Auth --> API: 6. Trả về User Auth { id: auth_user_id (UUID) }
+        deactivate Auth
+        
+        API -> DB: 7. Bắt đầu Database Transaction
+        activate DB
+        
+        API -> DB: 8. SELECT user_id FROM users WHERE phone_number = :phone_number
+        DB --> API: 9. Kết quả kiểm tra SĐT
+        
+        alt SĐT đã tồn tại
+            API -> DB: 10a. ROLLBACK
+            API -> Auth: 10b. admin.deleteUser(auth_user_id) [Clean up]
+            API --> UI: 10c. HTTP 409 Conflict\n{ ok: false, error: "Số điện thoại đã được đăng ký." }
+            UI --> Prov: 10d. Báo lỗi trùng số điện thoại
+        else SĐT hợp lệ
+            API -> DB: 11. INSERT INTO users (user_id, full_name, phone_number, role, is_active)\nVALUES (auth_user_id, :full_name, :phone, 'provider', false)
+            DB --> API: 12. users row created (is_active = false)
+            
+            API -> DB: 13. INSERT INTO provider_profiles\n(user_id, id_card_number, bio, verification_status, average_rating, total_reviews, is_available_online)\nVALUES (auth_user_id, :cccd, :bio, 'pending', 5.0, 0, false)\nRETURNING provider_id
+            DB --> API: 14. provider_profiles row created (provider_id, verification_status = 'pending')
+            
+            note over API, DB
+                <b>FR-PROV-03: Thiết lập khu vực hoạt động</b>
+                Kiểm tra tính hợp lệ của danh sách ward_id trước khi gán
+            end note
+            
+            API -> DB: 15. SELECT ward_id FROM ward WHERE ward_id IN (:ward_ids)
+            DB --> API: 16. Danh sách ward hợp lệ
+            
+            API -> DB: 17. INSERT INTO provider_areas (provider_id, ward_id)\nVALUES (:provider_id, :ward_id_1), (:provider_id, :ward_id_2)...
+            DB --> API: 18. provider_areas rows created
+            
+            API -> DB: 19. INSERT INTO audit_logs\n(actor_id, action, target_entity, target_id, details)\nVALUES (auth_user_id, 'REGISTER_PROVIDER', 'provider_profiles', :provider_id, 'Chờ duyệt KYC')
+            DB --> API: 20. audit_logs recorded
+            
+            API -> DB: 21. COMMIT TRANSACTION
+            DB --> API: 22. Transaction Committed
+            deactivate DB
+            
+            API --> UI: 23. HTTP 201 Created\n{ ok: true, provider_id, verification_status: 'pending' }
+            deactivate API
+            
+            UI --> Prov: 24. Hiển thị thông báo đăng ký thành công:\n"Hồ sơ đối tác đã được ghi nhận và đang chờ Admin duyệt CCCD."\n(Chuyển về màn hình chờ xác minh KYC)
+            deactivate UI
+        end
+    end
+end
+deactivate Prov
+
+@enduml

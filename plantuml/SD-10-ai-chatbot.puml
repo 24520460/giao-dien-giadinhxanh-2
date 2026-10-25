@@ -1,0 +1,92 @@
+@startuml SD-10-ai-chatbot
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-10: Tư vấn & Đề xuất dịch vụ qua AI Chatbot (Grounding dữ liệu thực)\n(Gộp FR-AI-001, FR-AI-003, FR-AI-004, FR-AI-005, FR-AI-006, FR-AI-007 & FR-AI-008)
+
+actor "User\n(Khách hàng / Khách vãng lai)" as User #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+participant "External AI Provider\n(Google Gemini / OpenAI)" as AIModel #E0F2FE
+
+User -> UI: 1. Mở cửa sổ AI Chatbot & Đặt câu hỏi:\n"Nhà tôi ở Cầu Giấy bị rò rỉ ống nước, có thợ nào sửa uy tín và giá tầm bao nhiêu?"
+activate User
+activate UI
+
+UI -> API: 2. POST /api/ai/chat\n{ conversation_id: "optional-uuid", message: "..." }
+activate API
+
+note over API
+    <b>FR-AI-005: Tiền xử lý & Lọc sạch dữ liệu nhạy cảm (PII Filter)</b>
+    Kiểm tra loại bỏ số CMND/CCCD, mật khẩu, số thẻ ngân hàng
+    trước khi đưa vào quy trình xử lý ngữ nghĩa.
+end note
+
+API -> API: 3. Lọc bỏ PII & Phân tích từ khóa sơ bộ (Intent: tìm thợ sửa ống nước, khu vực: Cầu Giấy)
+
+note over API, DB
+    <b>FR-AI-004: Grounding dữ liệu thực tế từ Database (Anti-Hallucination)</b>
+    Truy vấn trực tiếp danh mục dịch vụ đang mở, mức giá chuẩn do Admin cấu hình,
+    và các đối tác thợ đã verified thuộc khu vực Cầu Giấy để làm Context đưa vào Prompt.
+end note
+
+API -> DB: 4. SELECT s.service_id, s.name as service_name, s.base_price, s.pricing_type,\n       pp.provider_id, u.full_name as provider_name, pp.average_rating, pp.total_reviews\nFROM services s\nJOIN provider_services ps ON s.service_id = ps.service_id\nJOIN provider_profiles pp ON ps.provider_id = pp.provider_id\nJOIN users u ON pp.user_id = u.user_id\nJOIN provider_areas pa ON pp.provider_id = pa.provider_id\nJOIN ward w ON pa.ward_id = w.ward_id\nWHERE s.is_active = true AND pp.verification_status = 'verified' AND u.is_active = true\n  AND (s.name ILIKE '%nước%' OR s.name ILIKE '%ống%')\n  AND w.ward_name ILIKE '%Cầu Giấy%'\nLIMIT 3
+activate DB
+DB --> API: 5. Trả về 3 dịch vụ & hồ sơ thợ thực tế: Sửa chữa ống nước (150.000đ/giờ), Thợ: Nguyễn Văn A (4.9 sao)
+deactivate DB
+
+note over API, AIModel
+    <b>Đóng gói System Prompt với Dữ liệu Kiểm chứng (Context Injection):</b>
+    "Bạn là trợ lý Gia Đình Xanh. Chỉ tư vấn dựa trên danh sách dịch vụ và thợ thực tế sau:...
+    Không được tự sáng tác giá hoặc tên thợ."
+end note
+
+API -> AIModel: 6. generateContent({\n  systemInstruction: "...",\n  userMessage: "...",\n  groundingContext: [ { service_id, name, base_price, provider_name, rating } ]\n})
+activate AIModel
+
+alt AI Provider phản hồi thành công (Thời gian đáp ứng < 8s)
+    AIModel --> API: 7a. Trả về phản hồi tư vấn tự nhiên kèm cấu trúc Action Cards:\n- Dịch vụ phù hợp: Sửa chữa đường nước rò rỉ\n- Mức giá niêm yết: 150.000đ/giờ\n- Thợ gợi ý: Nguyễn Văn A (4.9 sao / 32 đánh giá)\n- Action: button link đến màn hình đặt lịch
+    
+    note over API, DB
+        <b>FR-AI-006: Lưu trữ lịch sử hội thoại</b>
+    end note
+    
+    API -> DB: 8a. INSERT INTO ai_messages (conversation_id, sender_type, content, metadata)\nVALUES (:conv_id, 'assistant', :reply_text, :action_payload)
+    activate DB
+    DB --> API: 9a. Message logged
+    deactivate DB
+    
+    API --> UI: 10a. HTTP 200 OK\n{ ok: true, conversation_id: :conv_id, message: :reply_text, actions: [...] }
+    
+    UI --> User: 11a. Render bong bóng chat trả lời của AI\nkèm các Thẻ gợi ý (Action Card) có nút "Đặt dịch vụ này ngay"
+    
+else AI Provider bị Lỗi / Timeout / Vượt Quota (FR-AI-007)
+    AIModel --> API: 7b. Error (503 Service Unavailable / Timeout > 8s)
+    deactivate AIModel
+    
+    note over API
+        <b>FR-AI-007: Fallback an toàn (Safe Graceful Fallback)</b>
+        Khi kết nối mô hình ngoài gặp trục trặc, hệ thống tự động sinh câu trả lời
+        khuyến nghị dựa trên dữ liệu Catalog đã truy vấn ở Bước 5.
+    end note
+    
+    API -> API: 8b. Kích hoạt Fallback Template Engine:\n"Hiện trợ lý AI đang bận. Dựa trên yêu cầu của bạn, chúng tôi tìm thấy dịch vụ Sửa ống nước (150.000đ) với thợ uy tín tại Cầu Giấy. Bạn có thể nhấn bên dưới để xem trực tiếp."
+    
+    API --> UI: 9b. HTTP 200 OK\n{ ok: true, is_fallback: true, message: "...", actions: [...] }
+    deactivate API
+    
+    UI --> User: 10b. Hiển thị phản hồi cứu nguy kèm danh sách kết quả trực tiếp từ DB
+end
+deactivate UI
+deactivate User
+
+@enduml

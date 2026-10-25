@@ -1,0 +1,88 @@
+@startuml SD-08-review-rating
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-08: Gửi Đánh giá & Tính lại Điểm Hiệu suất Provider\n(Gộp FR-REV-001, FR-REV-002, FR-REV-006, FR-REV-007 & FR-PROV-05)
+
+actor "Customer\n(Khách hàng)" as Cust #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+
+Cust -> UI: 1. Mở chi tiết đơn hàng đã hoàn thành,\nchọn số sao đánh giá (rating: 1-5 sao) và viết nhận xét (comment)
+activate Cust
+activate UI
+
+UI -> UI: 2. Validate client-side:\nRating nguyên từ 1 đến 5, comment tối thiểu 5 ký tự
+
+UI -> API: 3. POST /api/reviews\n{ booking_id, rating, comment }
+activate API
+
+group Transaction: Kiểm tra Quyền, Lưu Review & Cập nhật Điểm Thợ
+    API -> DB: 4. Bắt đầu Transaction (BEGIN TRANSACTION)
+    activate DB
+    
+    note over API, DB
+        <b>FR-REV-002: Kiểm tra Điều kiện Đánh giá chặt chẽ</b>
+        1. Người gửi phải đúng là Khách hàng của booking (chặn Thợ tự đánh giá)
+        2. Booking phải có trạng thái 'completed'
+        3. Booking chưa từng có bản ghi review nào trước đó (Unique Constraint)
+    end note
+    
+    API -> DB: 5. SELECT b.booking_id, b.customer_id, b.provider_id, b.booking_status,\n       r.review_id\nFROM bookings b\nLEFT JOIN reviews r ON b.booking_id = r.booking_id\nWHERE b.booking_id = :booking_id\nFOR UPDATE
+    DB --> API: 6. Trả về kết quả kiểm tra
+    
+    alt Người dùng không phải là Customer của đơn
+        API -> DB: 7a. ROLLBACK
+        API --> UI: 7b. HTTP 403 Forbidden\n{ ok: false, error: "Bạn không có quyền đánh giá đơn này." }
+        UI --> Cust: 7c. Hiển thị thông báo từ chối truy cập
+    else Booking chưa hoàn thành (status != 'completed')
+        API -> DB: 8a. ROLLBACK
+        API --> UI: 8b. HTTP 400 Bad Request\n{ ok: false, error: "Chỉ có thể đánh giá sau khi dịch vụ đã hoàn tất." }
+        UI --> Cust: 8c. Báo lỗi đơn chưa kết thúc
+    else Booking đã từng được đánh giá (review_id IS NOT NULL)
+        API -> DB: 9a. ROLLBACK
+        API --> UI: 9b. HTTP 409 Conflict\n{ ok: false, error: "Đơn hàng này đã được đánh giá trước đó." }
+        UI --> Cust: 9c. Thông báo đơn hàng đã có đánh giá
+    else Điều kiện hợp lệ toàn diện
+        note over API, DB
+            <b>FR-REV-001: Lưu bản ghi Đánh giá mới</b>
+        end note
+        
+        API -> DB: 10. INSERT INTO reviews (booking_id, customer_id, provider_id, rating, comment, is_visible)\nVALUES (:booking_id, :customer_id, :provider_id, :rating, :comment, true)\nRETURNING review_id, created_at
+        DB --> API: 11. Review record created
+        
+        note over API, DB
+            <b>FR-REV-006, 007 & FR-PROV-05: Tái tính toán Hiệu suất Thợ tức thì</b>
+            Tính trung bình cộng (AVG rating) và tổng số lượt đánh giá (COUNT reviews)
+            từ tất cả các đánh giá hợp lệ (is_visible = true) của thợ.
+        end note
+        
+        API -> DB: 12. SELECT ROUND(AVG(rating)::numeric, 1) as avg_rating, COUNT(review_id) as total_rev\nFROM reviews\nWHERE provider_id = :provider_id AND is_visible = true
+        DB --> API: 13. Kết quả tính toán mới: { avg_rating: 4.8, total_rev: 25 }
+        
+        API -> DB: 14. UPDATE provider_profiles\nSET average_rating = :avg_rating,\n    total_reviews = :total_rev,\n    updated_at = NOW()\nWHERE provider_id = :provider_id
+        DB --> API: 15. provider_profiles updated
+        
+        API -> DB: 16. COMMIT TRANSACTION
+        DB --> API: 17. Transaction committed successfully
+        deactivate DB
+        
+        API --> UI: 18. HTTP 201 Created\n{ ok: true, review_id: :review_id, new_average_rating: 4.8 }
+        deactivate API
+        
+        UI --> Cust: 19. Hiển thị thông báo cảm ơn đánh giá & Cập nhật sao và lời bình trên giao diện
+        deactivate UI
+    end
+end
+deactivate Cust
+
+@enduml

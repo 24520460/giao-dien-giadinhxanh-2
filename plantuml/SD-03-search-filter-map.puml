@@ -1,0 +1,72 @@
+@startuml SD-03-search-filter-map
+autonumber "<b>[00]</b>"
+skinparam roundcorner 8
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam sequenceMessageAlign center
+skinparam NoteBackgroundColor #FEF3C7
+skinparam NoteBorderColor #F59E0B
+skinparam BoxPadding 10
+skinparam ParticipantPadding 10
+
+title SD-03: Tìm kiếm, Lọc dịch vụ & Hiển thị Bản đồ\n(Gộp FR-SEARCH-01, FR-SEARCH-02, FR-SEARCH-03 & FR-MAP-01)
+
+actor "Customer\n(Khách hàng)" as Cust #EBF2EE
+boundary "Web UI\n(Gia Đình Xanh)" as UI #FFFFFF
+control "API / Backend\n(Node.js / Express)" as API #FFFFFF
+database "PostgreSQL\n(Supabase DB)" as DB #F1F3F5
+participant "Map Provider API\n(OpenStreetMap / Mapbox)" as MapAPI #E0F2FE
+
+Cust -> UI: 1. Nhập từ khóa tìm kiếm (keyword),\nchọn Danh mục (category_id), chọn Phường (ward_id),\nkhoảng giá (min_price - max_price) và Tiêu chí sắp xếp
+activate Cust
+activate UI
+
+UI -> API: 2. GET /api/services/search?keyword=...&category_id=...&ward_id=...&min_price=...&max_price=...&sort_by=rating_desc
+activate API
+
+note over API, DB
+    <b>Điều kiện truy vấn kết hợp (FR-SEARCH-01, 02, 03):</b>
+    1. services.is_active = true
+    2. service_categories.status = true (danh mục đang mở)
+    3. users.is_active = true VÀ provider_profiles.verification_status = 'verified'
+    4. Khớp khu vực phục vụ: provider_areas.ward_id = :ward_id
+    5. Giá chuẩn do Admin định: services.base_price BETWEEN :min_price AND :max_price
+    6. Sắp xếp theo yêu cầu: ORDER BY pp.average_rating DESC, s.base_price ASC
+end note
+
+API -> DB: 3. SELECT s.service_id, s.name, s.base_price, s.pricing_type,\n       sc.category_name, pp.provider_id, u.full_name as provider_name,\n       pp.average_rating, pp.total_reviews, w.ward_name, p.province_name\nFROM services s\nJOIN service_categories sc ON s.category_id = sc.category_id\nJOIN provider_services ps ON s.service_id = ps.service_id\nJOIN provider_profiles pp ON ps.provider_id = pp.provider_id\nJOIN users u ON pp.user_id = u.user_id\nJOIN provider_areas pa ON pp.provider_id = pa.provider_id\nJOIN ward w ON pa.ward_id = w.ward_id\nJOIN province p ON w.province_id = p.province_id\nWHERE s.is_active = true AND sc.status = true AND u.is_active = true\n  AND pp.verification_status = 'verified'\n  AND (:keyword IS NULL OR s.name ILIKE '%' || :keyword || '%')\n  AND (:category_id IS NULL OR s.category_id = :category_id)\n  AND (:ward_id IS NULL OR pa.ward_id = :ward_id)\n  AND s.base_price BETWEEN :min_price AND :max_price\nORDER BY pp.average_rating DESC
+activate DB
+
+DB --> API: 4. Danh sách dịch vụ và thợ thỏa mãn điều kiện
+deactivate DB
+
+API --> UI: 5. HTTP 200 OK\n{ ok: true, total: N, data: [ { service_id, name, base_price, provider: { id, name, rating, ward } } ] }
+deactivate API
+
+note over UI
+    <b>FR-MAP-01: Hiển thị Bản đồ & Fallback an toàn</b>
+    Hiển thị vị trí khu vực hoạt động của đối tác thợ trên Map Widget
+end note
+
+alt Bật chế độ hiển thị Bản đồ (Map View)
+    UI -> MapAPI: 6a. Yêu cầu tải bản đồ & Geocoding tọa độ khu vực (ward_name, province_name)
+    activate MapAPI
+    
+    alt Map Provider phản hồi thành công
+        MapAPI --> UI: 7a. Trả về Map Tiles & Coordinates (lat, lng)
+        UI -> UI: 8a. Render Map View, đánh dấu Pins/Markers vị trí thợ,\ngắn kèm Popup thông tin giá dịch vụ & nút "Đặt ngay"
+    else Map Provider bị lỗi hoặc Quá tải (Timeout / Quota Exceeded)
+        MapAPI --> UI: 7b. Lỗi kết nối (500 / Network Error)
+        deactivate MapAPI
+        UI -> UI: 8b. Kích hoạt Fallback tự động: Ẩn Map View,\nchuyển sang hiển thị Danh sách thẻ chuẩn (Grid/List View)\nvới đầy đủ thông tin tên Phường/Xã dạng text
+    end
+else Xem chế độ danh sách mặc định (List View)
+    UI -> UI: 6b. Render Service Cards Grid với phân trang (Pagination)
+end
+
+UI --> Cust: 9. Khách hàng xem danh sách kết quả phù hợp và lựa chọn dịch vụ
+deactivate UI
+deactivate Cust
+
+@enduml

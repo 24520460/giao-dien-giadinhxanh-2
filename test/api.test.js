@@ -55,6 +55,36 @@ describe('Gia Đình Xanh - Database Mock & Schema Verification', () => {
       assert.ok(u, `Provider profile ${pp.provider_id} references valid user_id ${pp.user_id}`);
     }
   });
+
+  test('db-mock initializes extended tables (addresses, ticket messages, notifications, audit_logs, AI chat)', () => {
+    const store = dbMock.createInitialStore();
+    const extendedTables = [
+      'customer_addresses',
+      'ticket_messages',
+      'notifications',
+      'audit_logs',
+      'ai_conversations',
+      'ai_messages'
+    ];
+
+    for (const table of extendedTables) {
+      assert.ok(Array.isArray(store[table]), `Extended table ${table} should be an array in store`);
+      assert.ok(store[table].length > 0, `Extended table ${table} should have initial seed data`);
+    }
+
+    // Check reviews have status
+    for (const r of store.reviews) {
+      assert.ok(r.status, `Review ${r.review_id} should have a status`);
+    }
+
+    // Check favorites support provider_id
+    const provFav = store.favorites.find(f => f.provider_id != null);
+    assert.ok(provFav, 'Should have at least one favorite provider record');
+
+    // Check bookings support auto_cancelled
+    const autoCancelledBk = store.bookings.find(b => b.status === 'auto_cancelled');
+    assert.ok(autoCancelledBk, 'Should have at least one auto_cancelled booking record');
+  });
 });
 
 describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
@@ -113,20 +143,22 @@ describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
     const isRunning = await pingServer(3000);
     if (isRunning) {
       targetPort = 3000;
-      return;
+    } else {
+      // Otherwise spawn server
+      const { spawn } = require('node:child_process');
+      serverProcess = spawn(process.execPath, ['server.js'], {
+        cwd: path.resolve(__dirname, '..'),
+        stdio: 'pipe'
+      });
+
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 200));
+        if (await pingServer(3000)) break;
+      }
     }
 
-    // Otherwise spawn server
-    const { spawn } = require('node:child_process');
-    serverProcess = spawn(process.execPath, ['server.js'], {
-      cwd: path.resolve(__dirname, '..'),
-      stdio: 'pipe'
-    });
-
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 200));
-      if (await pingServer(3000)) break;
-    }
+    // Ensure clean state before running tests
+    await makeRequest('POST', '/api/supabase/reset-local');
   });
 
   after(() => {
@@ -159,6 +191,7 @@ describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
       service_id: 1,
       ward_id: '27403',
       address: '123 Đường Nguyễn Thị Thập, Phường Tân Phú, Quận 7',
+      scheduled_time: '2026-11-05T09:00:00+07:00',
       total_amount: 180000,
       notes: 'Unit test booking creation'
     };
@@ -370,5 +403,179 @@ describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
     assert.strictEqual(res.statusCode, 403);
     assert.strictEqual(res.data.ok, false);
     assert.ok(res.data.error.includes('Production Mode'));
+  });
+
+  test('Double-booking & schedule exception prevention: POST /api/bookings returns 409 Conflict', async () => {
+    // 1. Provider 201 has exception on 2026-10-27
+    const conflictRes = await makeRequest('POST', '/api/bookings', {
+      customer_id: 101,
+      provider_id: 201,
+      service_id: 1,
+      ward_id: '27403',
+      address: '123 Đường Nguyễn Thị Thập',
+      scheduled_time: '2026-10-27T14:00:00+07:00'
+    });
+    assert.strictEqual(conflictRes.statusCode, 409);
+    assert.strictEqual(conflictRes.data.conflict, true);
+    assert.ok(conflictRes.data.error.includes('nghỉ làm hoặc bận'));
+
+    // 2. Provider 201 has confirmed/in_progress booking 1042 at 2026-10-23T14:00:00+07:00
+    const overlapRes = await makeRequest('POST', '/api/bookings', {
+      customer_id: 101,
+      provider_id: 201,
+      service_id: 1,
+      ward_id: '27403',
+      address: '123 Đường Nguyễn Thị Thập',
+      scheduled_time: '2026-10-23T14:30:00+07:00'
+    });
+    assert.strictEqual(overlapRes.statusCode, 409);
+    assert.strictEqual(overlapRes.data.conflict, true);
+    assert.ok(overlapRes.data.error.includes('trùng hoặc quá sát'));
+  });
+
+  test('24h Auto-expiration: POST /api/rpc/auto-expire expires overdue pending bookings', async () => {
+    const res = await makeRequest('POST', '/api/rpc/auto-expire');
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.ok, true);
+    assert.strictEqual(typeof res.data.expired_count, 'number');
+  });
+
+  test('In-app Notifications: GET, read, and read-all endpoints', async () => {
+    const getRes = await makeRequest('GET', '/api/notifications');
+    assert.strictEqual(getRes.statusCode, 200);
+    assert.strictEqual(getRes.data.ok, true);
+    assert.ok(Array.isArray(getRes.data.notifications));
+
+    if (getRes.data.notifications.length > 0) {
+      const targetId = getRes.data.notifications[0].notification_id;
+      const readRes = await makeRequest('POST', `/api/notifications/${targetId}/read`);
+      assert.strictEqual(readRes.statusCode, 200);
+      assert.strictEqual(readRes.data.ok, true);
+    }
+
+    const readAllRes = await makeRequest('POST', '/api/notifications/read-all', { user_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' });
+    assert.strictEqual(readAllRes.statusCode, 200);
+    assert.strictEqual(readAllRes.data.ok, true);
+  });
+
+  test('Support Ticket Messages: GET & POST /api/tickets/:id/messages with internal notes support', async () => {
+    // 1. Post a public message
+    const pubRes = await makeRequest('POST', '/api/tickets/701/messages', {
+      sender_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      sender_role: 'customer',
+      content: 'Tôi muốn hỏi thời gian thợ có mặt.',
+      visibility: 'public'
+    });
+    assert.strictEqual(pubRes.statusCode, 201);
+    assert.strictEqual(pubRes.data.ok, true);
+
+    // 2. Post an internal note by admin
+    const intRes = await makeRequest('POST', '/api/tickets/701/messages', {
+      sender_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99',
+      sender_role: 'admin',
+      content: 'Ghi chú nội bộ: Khách VIP, ưu tiên giải quyết ngay.',
+      visibility: 'internal'
+    });
+    assert.strictEqual(intRes.statusCode, 201);
+    assert.strictEqual(intRes.data.ok, true);
+
+    // 3. Customer GET tickets messages should NOT see internal notes
+    const custMsgs = await makeRequest('GET', '/api/tickets/701/messages?role=customer');
+    assert.strictEqual(custMsgs.statusCode, 200);
+    const hasInternal = custMsgs.data.messages.some(m => m.visibility === 'internal');
+    assert.strictEqual(hasInternal, false, 'Customer should not see internal notes');
+
+    // 4. Admin GET tickets messages SHOULD see internal notes
+    const adminMsgs = await makeRequest('GET', '/api/tickets/701/messages?role=admin');
+    assert.strictEqual(adminMsgs.statusCode, 200);
+    const adminHasInternal = adminMsgs.data.messages.some(m => m.visibility === 'internal');
+    assert.strictEqual(adminHasInternal, true, 'Admin should see internal notes');
+  });
+
+  test('Customer Saved Addresses: CRUD /api/customer/addresses', async () => {
+    // Create
+    const createRes = await makeRequest('POST', '/api/customer/addresses', {
+      customer_id: 101,
+      tag: 'Căn hộ chung cư',
+      street_address: 'Tầng 12 Tháp B, Sunrise City',
+      ward_id: '27403',
+      latitude: 10.7456,
+      longitude: 106.7012,
+      is_default: true
+    });
+    assert.strictEqual(createRes.statusCode, 201);
+    assert.strictEqual(createRes.data.ok, true);
+    const newAddressId = createRes.data.address.address_id;
+
+    // Read
+    const getRes = await makeRequest('GET', '/api/customer/addresses?customer_id=101');
+    assert.strictEqual(getRes.statusCode, 200);
+    assert.ok(getRes.data.addresses.some(a => String(a.address_id) === String(newAddressId)));
+
+    // Update
+    const updateRes = await makeRequest('PUT', `/api/customer/addresses/${newAddressId}`, {
+      tag: 'Căn hộ Sunrise',
+      is_default: false
+    });
+    assert.strictEqual(updateRes.statusCode, 200);
+    assert.strictEqual(updateRes.data.ok, true);
+
+    // Delete
+    const delRes = await makeRequest('DELETE', `/api/customer/addresses/${newAddressId}`);
+    assert.strictEqual(delRes.statusCode, 200);
+    assert.strictEqual(delRes.data.ok, true);
+  });
+
+  test('Favorites: POST /api/favorites/toggle supports both services and providers', async () => {
+    // Toggle service
+    const sFav = await makeRequest('POST', '/api/favorites/toggle', { customer_id: 101, service_id: 301 });
+    assert.strictEqual(sFav.statusCode, 200);
+    assert.strictEqual(sFav.data.ok, true);
+
+    // Toggle provider
+    const pFav = await makeRequest('POST', '/api/favorites/toggle', { customer_id: 101, provider_id: 202 });
+    assert.strictEqual(pFav.statusCode, 200);
+    assert.strictEqual(pFav.data.ok, true);
+
+    // Get favorites
+    const getFavs = await makeRequest('GET', '/api/favorites?customer_id=101');
+    assert.strictEqual(getFavs.statusCode, 200);
+    assert.ok(Array.isArray(getFavs.data.favorites));
+  });
+
+  test('Review Moderation & Audit Logs: soft-hide review and log admin action', async () => {
+    // Moderate review (hide)
+    const modRes = await makeRequest('PATCH', '/api/admin/reviews/801/moderate', {
+      status: 'hidden',
+      moderation_reason: 'Ngôn từ không phù hợp quy tắc cộng đồng',
+      actor_id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99'
+    });
+    assert.strictEqual(modRes.statusCode, 200);
+    assert.strictEqual(modRes.data.ok, true);
+    assert.strictEqual(modRes.data.review.status, 'hidden');
+
+    // Audit logs should record this action
+    const auditRes = await makeRequest('GET', '/api/admin/audit-logs');
+    assert.strictEqual(auditRes.statusCode, 200);
+    const foundLog = auditRes.data.audit_logs.find(l => l.action === 'HIDE_REVIEW');
+    assert.ok(foundLog, 'Audit logs should record HIDE_REVIEW action');
+  });
+
+  test('AI Chatbot Assistant: POST /api/ai/chat grounded domain reasoning & memory', async () => {
+    const chatRes = await makeRequest('POST', '/api/ai/chat', {
+      message: 'Tôi muốn tìm dịch vụ dọn dẹp nhà và xem giá bao nhiêu?'
+    });
+    assert.strictEqual(chatRes.statusCode, 200);
+    assert.strictEqual(chatRes.data.ok, true);
+    assert.ok(chatRes.data.conversation_id, 'Returns conversation_id');
+    assert.ok(chatRes.data.reply.length > 50, 'Returns detailed grounded response');
+    assert.ok(Array.isArray(chatRes.data.recommended_services), 'Returns recommended services');
+    assert.ok(Array.isArray(chatRes.data.suggestions), 'Returns quick prompt suggestions');
+
+    // Check conversation history
+    const histRes = await makeRequest('GET', `/api/ai/history?conversation_id=${chatRes.data.conversation_id}`);
+    assert.strictEqual(histRes.statusCode, 200);
+    assert.strictEqual(histRes.data.ok, true);
+    assert.ok(histRes.data.messages.length >= 2, 'History contains user message and assistant reply');
   });
 });
