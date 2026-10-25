@@ -1206,7 +1206,7 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
       const isBroadcast = (body.provider_id === null || body.provider_id === undefined || body.provider_id === "broadcast");
       const newBk = {
         customer_id: customerId,
-        provider_id: isBroadcast ? "00000000-0000-4000-8000-000000000200" : body.provider_id,
+        provider_id: isBroadcast ? null : (Number(body.provider_id) || body.provider_id),
         service_id: serviceId,
         scheduled_time: body.scheduled_time || nowIso,
         status: "pending",
@@ -1346,12 +1346,16 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     bk.updated_at = new Date().toISOString();
 
     const nextHistoryId = Math.max(5000, ...db.booking_status_history.map((h) => h.history_id || 0)) + 1;
+    const pp = (db.provider_profiles || []).find((p) => p.provider_id === Number(providerId));
+    const resolvedActor = (typeof actorUserId === "string" && /^[0-9a-f-]{36}$/i.test(actorUserId))
+      ? actorUserId
+      : ((pp && pp.user_id) || "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21");
     const historyRow = {
       history_id: nextHistoryId,
       booking_id: bookingId,
       previous_status: oldStatus,
       new_status: "confirmed",
-      changed_by: actorUserId || 4,
+      changed_by: resolvedActor,
       reason: "Đối tác đã nhận việc từ Hòm thư việc làm",
       created_at: new Date().toISOString()
     };
@@ -1509,12 +1513,15 @@ async function handleApiRequest(req, res, pathname, searchParams = new URLSearch
     bk.updated_at = nowIso;
 
     if (!Array.isArray(db.booking_status_history)) db.booking_status_history = [];
+    const actorUuid = (typeof body.changed_by === "string" && /^[0-9a-f-]{36}$/i.test(body.changed_by))
+      ? body.changed_by
+      : "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
     db.booking_status_history.unshift({
       history_id: Date.now(),
       booking_id: bookingId,
       previous_status: bk.status,
       new_status: bk.status,
-      changed_by: Number(body.changed_by) || 1,
+      changed_by: actorUuid,
       reason: `[THANH TOÁN THÀNH CÔNG] Đã thanh toán qua ${methodType === "VIETQR_BANK_TRANSFER" ? "VietQR Ngân hàng (Vietcombank)" : "Tiền mặt"} (Mã GD: ${txId})`,
       created_at: nowIso
     });

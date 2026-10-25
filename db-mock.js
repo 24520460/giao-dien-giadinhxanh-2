@@ -173,7 +173,7 @@
       {
         provider_id: 202,
         user_id: 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b22',
-        info: 'Thợ kỹ thuật vệ sinh máy lạnh treo tường, giặt sofa nệm và tổng vệ sinh căn hộ sau sửa chữa.',
+        info: 'Thợ dọn dẹp chuyên sâu, tổng vệ sinh căn hộ và khử khuẩn không gian sống gia đình tại Quận 7 và TP. Thủ Đức.',
         id_card_number: '079092011834',
         avatar_url: 'assets/provider-tuan.jpg',
         verification_status: 'verified',
@@ -203,7 +203,7 @@
       {
         provider_id: 204,
         user_id: 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b24',
-        info: 'Thợ vệ sinh máy lạnh và bảo dưỡng thiết bị gia dụng · 4 năm kinh nghiệm làm việc tại TP.HCM.',
+        info: 'Chuyên viên dọn dẹp nhà cửa và tổng vệ sinh căn hộ · 4 năm kinh nghiệm làm việc tại TP.HCM.',
         id_card_number: '079095023419',
         avatar_url: 'assets/provider-mai.jpg',
         verification_status: 'pending',
@@ -468,7 +468,7 @@
         total_amount: 300000, // 2h * 150k
         status: 'pending',
         payment_status: 'unpaid',
-        notes: 'Vệ sinh 2 máy lạnh phòng ngủ và phòng khách, đăng ký thẻ ra vào sảnh T2.',
+        notes: 'Nấu bữa trưa cuối tuần cho gia đình 4 người, đăng ký thẻ ra vào sảnh T2.',
         created_at: '2026-10-23T11:05:00+07:00',
         updated_at: '2026-10-23T11:05:00+07:00',
       },
@@ -540,7 +540,7 @@
         total_amount: 300000,
         status: 'completed',
         payment_status: 'paid',
-        notes: 'Xịt rửa 2 máy lạnh phòng khách và phòng ngủ chính.',
+        notes: 'Nấu tiệc nhỏ ấm cúng sinh nhật bé, thực đơn 4 món dinh dưỡng.',
         created_at: '2026-10-17T09:00:00+07:00',
         updated_at: '2026-10-18T16:10:00+07:00',
       },

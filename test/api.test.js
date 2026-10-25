@@ -310,7 +310,7 @@ describe('Gia Đình Xanh - Full-Stack REST API & RPC Verification', () => {
     // 2. First provider accepts job successfully
     const acceptRes1 = await makeRequest('POST', `/api/bookings/${bkId}/accept`, {
       provider_id: 201,
-      user_id: 4
+      user_id: 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21'
     });
     assert.strictEqual(acceptRes1.statusCode, 200);
     assert.strictEqual(acceptRes1.data.ok, true);

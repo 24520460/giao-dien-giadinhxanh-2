@@ -2300,7 +2300,7 @@ window.GDXApp = (() => {
 
           <div class="field-group">
             <label class="field-label" for="obProvInfo">Giới thiệu kinh nghiệm chuyên môn (provider_profiles.info)</label>
-            <textarea id="obProvInfo" name="info" class="textarea" rows="3" required>4 năm kinh nghiệm dọn dẹp nhà cửa theo giờ, vệ sinh máy lạnh treo tường và bảo dưỡng thiết bị gia dụng tại TP.HCM.</textarea>
+            <textarea id="obProvInfo" name="info" class="textarea" rows="3" required>5 năm kinh nghiệm dọn dẹp nhà cửa theo giờ, tổng vệ sinh căn hộ chuyên sâu và nấu ăn gia đình chu đáo tại TP.HCM.</textarea>
           </div>
         </div>
 
@@ -3976,14 +3976,18 @@ window.GDXApp = (() => {
     db.bookings.unshift(realBooking);
 
     db.booking_status_history = db.booking_status_history || [];
+    const nowIso = new Date().toISOString();
+    const actorId = state.activeUserId || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
     db.booking_status_history.unshift({
       history_id: Date.now(),
       booking_id: realBooking.booking_id,
+      previous_status: null,
       old_status: null,
       new_status: 'pending',
-      changed_by: state.activeUserId,
+      changed_by: actorId,
       reason: 'Khách hàng tạo lịch hẹn mới từ giao diện đặt lịch',
-      changed_at: new Date().toISOString()
+      created_at: nowIso,
+      changed_at: nowIso
     });
 
     state.selectedBookingId = realBooking.booking_id;
@@ -4907,12 +4911,16 @@ window.GDXApp = (() => {
     const bk = (db.bookings || []).find((b) => b.booking_id === bookingId);
     if (!bk) return;
 
+    const provId = state.activeProviderId || 201;
+    const activeProv = (db.provider_profiles || []).find((p) => p.provider_id === provId);
+    const provUserId = state.activeUserId || (activeProv && activeProv.user_id) || 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21';
+
     // Concurrency check via API
     const res = await apiRequest(`/api/bookings/${bookingId}/accept`, {
       method: 'POST',
       body: JSON.stringify({
-        provider_id: state.activeProviderId || 201,
-        user_id: state.activeUserId || 4
+        provider_id: provId,
+        user_id: provUserId
       })
     });
 
@@ -4932,17 +4940,20 @@ window.GDXApp = (() => {
       return;
     }
 
-    bk.provider_id = state.activeProviderId || 201;
+    const nowIso = new Date().toISOString();
+    bk.provider_id = provId;
     bk.status = 'confirmed';
     bk.dispatch_type = 'direct';
     db.booking_status_history.unshift({
       history_id: Date.now(),
       booking_id: bookingId,
+      previous_status: 'pending',
       old_status: 'pending',
       new_status: 'confirmed',
-      changed_by: 4,
+      changed_by: provUserId,
       reason: 'Đối tác đã xác nhận nhận việc từ Hòm thư việc làm',
-      changed_at: new Date().toISOString()
+      created_at: nowIso,
+      changed_at: nowIso
     });
     state.selectedBookingId = bookingId;
     showToast(`Đã nhận đơn #${bookingId} thành công! Chuyển sang màn hình Ca làm việc.`);
@@ -6039,7 +6050,7 @@ window.GDXApp = (() => {
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="GDXApp.closeModal()">Để sau</button>
-        <button type="button" class="btn btn-primary" onclick="GDXApp.submitInvoicePayment(${bk.booking_id})">
+        <button type="button" class="btn btn-primary" onclick="GDXApp.submitInvoicePayment('${bk.booking_id}')">
           Xác nhận thanh toán (${formatMoney(total)}) &rarr;
         </button>
       </div>
@@ -6076,11 +6087,14 @@ window.GDXApp = (() => {
   }
 
   function confirmBookingPayment(bookingId, method = 'CASH') {
-    const bk = window.GDX_DB.bookings.find((b) => b.booking_id === bookingId);
+    const bk = window.GDX_DB.bookings.find((b) => String(b.booking_id) === String(bookingId));
     if (bk) bk.payment_status = 'paid';
+    const actorId = (typeof state.activeUserId === 'string' && /^[0-9a-f-]{36}$/i.test(state.activeUserId))
+      ? state.activeUserId
+      : 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
     apiRequest(`/api/bookings/${bookingId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ booking_id: bookingId, method, changed_by: state.activeUserId || 1 })
+      body: JSON.stringify({ booking_id: bookingId, method, changed_by: actorId })
     });
     closeModal();
     showToast(`Đã ghi nhận thanh toán hóa đơn #${bookingId} thành công!`);
@@ -6097,8 +6111,8 @@ window.GDXApp = (() => {
     }
 
     const db = window.GDX_DB;
-    const bookingId = Number(params.bookingId) || 1042;
-    const bk = db.bookings.find((b) => b.booking_id === bookingId) || db.bookings[0];
+    const bookingId = params.bookingId != null ? params.bookingId : (db.bookings[0] ? db.bookings[0].booking_id : 1042);
+    const bk = db.bookings.find((b) => String(b.booking_id) === String(bookingId)) || db.bookings[0];
     const svc = db.services.find((s) => s.service_id === bk.service_id);
     const total = (bk.total_amount || 0) + (bk.total_incidental || 0);
     const transferMemo = `GDX${bk.booking_id}`;
@@ -6107,7 +6121,7 @@ window.GDXApp = (() => {
       <div class="vietqr-page-container">
         <!-- Breadcrumb / Back link -->
         <div style="margin-bottom:16px;">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.cancelQrPayment(${bk.booking_id})" style="display:inline-flex; align-items:center; gap:6px;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="GDXApp.cancelQrPayment('${bk.booking_id}')" style="display:inline-flex; align-items:center; gap:6px;">
             &larr; Quay lại Theo dõi đơn hàng #${bk.booking_id}
           </button>
         </div>
@@ -6213,10 +6227,10 @@ window.GDXApp = (() => {
 
             <!-- Action buttons -->
             <div style="display:flex; flex-direction:column; gap:10px;">
-              <button type="button" class="btn btn-primary" style="height:44px; font-weight:700;" onclick="GDXApp.executeQrPaymentSuccess(${bk.booking_id})">
+              <button type="button" class="btn btn-primary" style="height:44px; font-weight:700;" onclick="GDXApp.executeQrPaymentSuccess('${bk.booking_id}')">
                 ✓ Tôi đã chuyển khoản thành công &rarr;
               </button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.cancelQrPayment(${bk.booking_id})">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="GDXApp.cancelQrPayment('${bk.booking_id}')">
                 Đổi phương thức thanh toán / Hủy
               </button>
             </div>
@@ -6272,7 +6286,7 @@ window.GDXApp = (() => {
       if (remaining <= 0) {
         clearInterval(qrTimerInterval);
         qrTimerInterval = null;
-        executeQrPaymentSuccess(bookingId);
+        executeQrPaymentSuccess(bk.booking_id);
       }
     }, 1000);
   }
@@ -6284,9 +6298,10 @@ window.GDXApp = (() => {
     }
 
     const db = window.GDX_DB;
-    const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    const bk = (bookingId != null ? db.bookings.find((b) => String(b.booking_id) === String(bookingId)) : null) || db.bookings[0];
     if (!bk) return;
 
+    const actualId = bk.booking_id;
     const total = (bk.total_amount || 0) + (bk.total_incidental || 0);
     const txId = 'VCB-QR' + Date.now().toString().slice(-7);
     const nowIso = new Date().toISOString();
@@ -6304,36 +6319,40 @@ window.GDXApp = (() => {
     bk.paid_at = nowIso;
     bk.updated_at = nowIso;
 
+    const actorUuid = (typeof state.activeUserId === 'string' && /^[0-9a-f-]{36}$/i.test(state.activeUserId))
+      ? state.activeUserId
+      : 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
     if (!Array.isArray(db.booking_status_history)) db.booking_status_history = [];
     db.booking_status_history.unshift({
       history_id: Date.now(),
-      booking_id: bookingId,
+      booking_id: actualId,
       previous_status: bk.status,
       new_status: bk.status,
-      changed_by: state.activeUserId || 1,
+      changed_by: actorUuid,
       reason: `[VIETQR AUTO-CONFIRM] Khách hàng quét mã QR chuyển khoản thành công ${formatMoney(total)} (Mã GD: ${txId})`,
       created_at: nowIso
     });
 
     try {
-      await apiRequest(`/api/bookings/${bookingId}/pay`, {
+      await apiRequest(`/api/bookings/${actualId}/pay`, {
         method: 'POST',
         body: JSON.stringify({
-          booking_id: bookingId,
+          booking_id: actualId,
           method: 'VIETQR_BANK_TRANSFER',
           transaction_id: txId,
           amount: total,
-          changed_by: state.activeUserId || 1
+          changed_by: actorUuid
         })
       });
     } catch (err) {
       console.warn('Payment API record warning:', err);
     }
 
-    showToast(`🎉 Đã xác nhận thanh toán hóa đơn #${bookingId} thành công qua VietQR!`);
+    showToast(`🎉 Đã xác nhận thanh toán hóa đơn #${actualId} thành công qua VietQR!`);
 
     setTimeout(() => {
-      go('1.3', { bookingId });
+      go('1.3', { bookingId: actualId });
     }, 1800);
   }
 
@@ -6346,9 +6365,18 @@ window.GDXApp = (() => {
   }
 
   function copyText(text, btnEl) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text);
-    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(String(text));
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = String(text);
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    } catch (_) {}
     if (btnEl) {
       const orig = btnEl.textContent;
       btnEl.textContent = '✓ Đã chép';
@@ -6476,22 +6504,28 @@ window.GDXApp = (() => {
   function confirmCancelBooking(bookingId, form) {
     const db = window.GDX_DB;
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    const nowIso = new Date().toISOString();
+    const actorUuid = (typeof state.activeUserId === 'string' && /^[0-9a-f-]{36}$/i.test(state.activeUserId))
+      ? state.activeUserId
+      : 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
     if (bk) {
       const oldStatus = bk.status;
       bk.status = 'cancelled';
       db.booking_status_history.unshift({
         history_id: Date.now(),
         booking_id: bookingId,
+        previous_status: oldStatus,
         old_status: oldStatus,
         new_status: 'cancelled',
-        changed_by: state.activeUserId,
+        changed_by: actorUuid,
         reason: form.reason.value,
-        changed_at: new Date().toISOString()
+        created_at: nowIso,
+        changed_at: nowIso
       });
     }
     apiRequest(`/api/bookings/${bookingId}/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ user_id: state.activeUserId, reason: form.reason.value })
+      body: JSON.stringify({ user_id: actorUuid, reason: form.reason.value })
     });
     closeModal();
     showToast(`Đã hủy lịch hẹn #${bookingId}`);
@@ -6682,16 +6716,21 @@ window.GDXApp = (() => {
   function completeJobShift(bookingId) {
     const db = window.GDX_DB;
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    const nowIso = new Date().toISOString();
+    const activeProv = (db.provider_profiles || []).find((p) => p.provider_id === (state.activeProviderId || 201));
+    const provUserId = state.activeUserId || (activeProv && activeProv.user_id) || 'b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21';
     if (bk) {
       bk.status = 'completed';
       db.booking_status_history.unshift({
         history_id: Date.now(),
         booking_id: bookingId,
+        previous_status: 'in_progress',
         old_status: 'in_progress',
         new_status: 'completed',
-        changed_by: 4,
+        changed_by: provUserId,
         reason: 'Hoàn tất nghiệm thu công việc tại nhà khách hàng',
-        changed_at: new Date().toISOString()
+        created_at: nowIso,
+        changed_at: nowIso
       });
     }
     apiRequest(`/api/bookings/${bookingId}/complete`, { method: 'POST' });
@@ -6869,17 +6908,23 @@ window.GDXApp = (() => {
   function adminForceStatus(bookingId, form) {
     const db = window.GDX_DB;
     const bk = db.bookings.find((b) => b.booking_id === bookingId);
+    const nowIso = new Date().toISOString();
+    const adminUserId = (typeof state.activeUserId === 'string' && /^[0-9a-f-]{36}$/i.test(state.activeUserId))
+      ? state.activeUserId
+      : 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380c99';
     if (bk) {
       const oldStatus = bk.status;
       bk.status = form.status.value;
       db.booking_status_history.unshift({
         history_id: Date.now(),
         booking_id: bookingId,
+        previous_status: oldStatus,
         old_status: oldStatus,
         new_status: form.status.value,
-        changed_by: 1,
+        changed_by: adminUserId,
         reason: form.reason.value,
-        changed_at: new Date().toISOString()
+        created_at: nowIso,
+        changed_at: nowIso
       });
     }
     closeModal();

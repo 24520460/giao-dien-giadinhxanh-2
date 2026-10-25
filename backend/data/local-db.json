@@ -71,7 +71,7 @@
       "role": "customer",
       "is_active": true,
       "created_at": "2026-08-12T08:15:00+07:00",
-      "updated_at": "2026-10-24T14:48:36.326Z"
+      "updated_at": "2026-10-24T15:12:40.305Z"
     },
     {
       "user_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
@@ -144,15 +144,15 @@
       "updated_at": "2026-10-23T08:00:00+07:00"
     },
     {
-      "user_id": "a0000000-0000-4000-8000-792853316756",
+      "user_id": "a0000000-0000-4000-8000-792854760321",
       "full_name": "Nguyễn Văn Test",
-      "phone_number": "0936656360",
-      "email": "0936656360@test.vn",
+      "phone_number": "0936219116",
+      "email": "0936219116@test.vn",
       "password": "StrongPassword123",
       "role": "customer",
       "is_active": true,
-      "created_at": "2026-10-24T14:48:36.756Z",
-      "updated_at": "2026-10-24T14:48:36.756Z"
+      "created_at": "2026-10-24T15:12:40.321Z",
+      "updated_at": "2026-10-24T15:12:40.321Z"
     }
   ],
   "customer_profiles": [
@@ -164,7 +164,7 @@
       "latitude": 10.779123,
       "longitude": 106.699876,
       "created_at": "2026-08-12T08:16:00+07:00",
-      "updated_at": "2026-10-24T14:48:36.326Z"
+      "updated_at": "2026-10-24T15:12:40.305Z"
     },
     {
       "customer_id": 102,
@@ -578,7 +578,7 @@
       "provider_id": 201,
       "dispatch_type": "direct",
       "service_id": 301,
-      "scheduled_time": "2026-10-24T14:48:36.776Z",
+      "scheduled_time": "2026-10-24T15:12:40.332Z",
       "status": "confirmed",
       "address": "KTX Khu A ĐHQG, Tạ Quang Bửu, Phường Linh Trung",
       "ward_id": "27403",
@@ -588,8 +588,8 @@
       "total_incidental": 0,
       "notes": "[BROADCAST_POOL] Đơn broadcast gửi tới toàn bộ thợ",
       "payment_status": "unpaid",
-      "created_at": "2026-10-24T14:48:36.776Z",
-      "updated_at": "2026-10-24T14:48:36.784Z"
+      "created_at": "2026-10-24T15:12:40.332Z",
+      "updated_at": "2026-10-24T15:12:40.337Z"
     },
     {
       "booking_id": 1042,
@@ -742,9 +742,9 @@
       "booking_id": 1045,
       "previous_status": "pending",
       "new_status": "confirmed",
-      "changed_by": 4,
+      "changed_by": "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380b21",
       "reason": "Đối tác đã nhận việc từ Hòm thư việc làm",
-      "created_at": "2026-10-24T14:48:36.784Z"
+      "created_at": "2026-10-24T15:12:40.337Z"
     },
     {
       "history_id": 5007,
@@ -753,7 +753,7 @@
       "new_status": "pending",
       "changed_by": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       "reason": "Khách hàng tạo đơn đặt lịch qua Booking Wizard 1.2",
-      "created_at": "2026-10-24T14:48:36.776Z"
+      "created_at": "2026-10-24T15:12:40.332Z"
     },
     {
       "history_id": 5001,
