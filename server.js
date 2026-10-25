@@ -122,42 +122,64 @@ function getSupabaseClient() {
 // ---------------------------------------------------------------------
 // 2. QUẢN LÝ PERSISTENT LOCAL SQL STORE (backend/data/local-db.json)
 // ---------------------------------------------------------------------
+let inMemoryDb = null;
+
 function ensureLocalDb() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (inMemoryDb) {
+    return inMemoryDb;
   }
-  if (!fs.existsSync(LOCAL_DB_PATH)) {
-    const initial = createInitialDatabase();
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(initial, null, 2), "utf8");
-    return initial;
-  }
+
+  // 1. Cố gắng đọc từ file cục bộ nếu tồn tại
   try {
-    const raw = fs.readFileSync(LOCAL_DB_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    const initial = createInitialDatabase();
-    let updated = false;
-    for (const key of Object.keys(initial)) {
-      if (!parsed[key] && Array.isArray(initial[key])) {
-        parsed[key] = initial[key];
-        updated = true;
+    if (fs.existsSync(LOCAL_DB_PATH)) {
+      const raw = fs.readFileSync(LOCAL_DB_PATH, "utf8");
+      const parsed = JSON.parse(raw);
+      const initial = createInitialDatabase();
+      let updated = false;
+      for (const key of Object.keys(initial)) {
+        if (!parsed[key] && Array.isArray(initial[key])) {
+          parsed[key] = initial[key];
+          updated = true;
+        }
       }
+      if (updated) {
+        try {
+          fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(parsed, null, 2), "utf8");
+        } catch (_) {}
+      }
+      inMemoryDb = parsed;
+      return inMemoryDb;
     }
-    if (updated) {
-      fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(parsed, null, 2), "utf8");
-    }
-    return parsed;
   } catch (e) {
-    const initial = createInitialDatabase();
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(initial, null, 2), "utf8");
-    return initial;
+    console.warn("[LocalDB] Không đọc được file, dùng in-memory fallback:", e.message);
   }
+
+  // 2. Khởi tạo dữ liệu mẫu nếu chưa có file
+  inMemoryDb = createInitialDatabase();
+
+  // 3. Ghi ra đĩa nếu hệ thống cho phép ghi (trên Vercel read-only sẽ bỏ qua an toàn)
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(inMemoryDb, null, 2), "utf8");
+  } catch (e) {
+    // Môi trường Vercel Serverless (Read-only filesystem), dữ liệu hoạt động trên RAM
+  }
+
+  return inMemoryDb;
 }
 
 function saveLocalDb(db) {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  inMemoryDb = db;
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(db, null, 2), "utf8");
+  } catch (e) {
+    // Bỏ qua lỗi EROFS trên môi trường serverless (Vercel)
   }
-  fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(db, null, 2), "utf8");
 }
 
 // View: provider_public_profiles (ẩn id_card_number, chỉ trả về verified + is_active)
@@ -2896,7 +2918,7 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
-const server = http.createServer(async (req, res) => {
+async function appHandler(req, res) {
   try {
     const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const pathname = decodeURIComponent(parsedUrl.pathname);
@@ -2923,7 +2945,9 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     sendJson(res, 500, { ok: false, error: err.message });
   }
-});
+}
+
+const server = http.createServer(appHandler);
 
 process.on("uncaughtException", (err) => {
   console.error("[Server UncaughtException]", err);
@@ -2941,18 +2965,24 @@ if (env !== "production") {
   ensureLocalDb();
 }
 
-// Background Cron Job: Tự động hủy đơn hàng pending quá 24h (FR-BOOK-007)
-setInterval(() => {
-  try {
-    const isProd = env === "production";
-    const db = isProd ? null : ensureLocalDb();
-    const { client } = getSupabaseClient();
-    autoExpirePendingBookings(db, isProd, client);
-  } catch (err) {
-    console.warn("[Background Auto-Expire Cron Warning]", err.message);
-  }
-}, 60 * 1000);
+// Chỉ chạy background worker và listen khi chạy độc lập (không nằm trên Vercel Serverless)
+if (!process.env.VERCEL) {
+  // Background Cron Job: Tự động hủy đơn hàng pending quá 24h (FR-BOOK-007)
+  setInterval(() => {
+    try {
+      const isProd = env === "production";
+      const db = isProd ? null : ensureLocalDb();
+      const { client } = getSupabaseClient();
+      autoExpirePendingBookings(db, isProd, client);
+    } catch (err) {
+      console.warn("[Background Auto-Expire Cron Warning]", err.message);
+    }
+  }, 60 * 1000);
 
-server.listen(port, "0.0.0.0", () => {
-  console.log(`[Gia Đình Xanh Server] Đang chạy tại http://localhost:${port} (Môi trường: ${env})`);
-});
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`[Gia Đình Xanh Server] Đang chạy tại http://localhost:${port} (Môi trường: ${env})`);
+  });
+}
+
+// Xuất appHandler cho môi trường Vercel Serverless
+module.exports = appHandler;
